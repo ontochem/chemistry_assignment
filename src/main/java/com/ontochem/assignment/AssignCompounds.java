@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ontochem.assignment.OntologyLoader.OntologyData;
 
 
+
 /**
  * Compound assignment to chemical structure classes in a ontology
  *
