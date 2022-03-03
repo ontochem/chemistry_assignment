@@ -1,6 +1,19 @@
 /*
- * Copyright OntoChem GmbH.
- */
+* Copyright OntoChem GmbH, 
+* Blücherstrasse 24, 06120 Halle (Saale), Germany
+*
+* Licensed under the Apache License, Version 2.0 (the "License");
+* you may not use this file except in compliance with the License.
+* You may obtain a copy of the License at
+*
+*    http://www.apache.org/licenses/LICENSE-2.0
+*
+* Unless required by applicable law or agreed to in writing, software
+* distributed under the License is distributed on an "AS IS" BASIS,
+* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+* See the License for the specific language governing permissions and
+* limitations under the License.
+*/
 package com.ontochem.assignment;
 
 import java.io.BufferedOutputStream;
@@ -22,8 +35,6 @@ import java.util.logging.Logger;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ontochem.assignment.OntologyLoader.OntologyData;
-
-
 
 /**
  * Compound assignment to chemical structure classes in a ontology
@@ -170,13 +181,13 @@ public class AssignCompounds {
     final Map<String,Set<String>>  ocidClass2ParentMap  = ontData.getOcidParentMap();
     final Map<String,List<String>> ocidClass2SmartsList = ontData.getOcidSmartsMap();
     final Map<String,String>       ocidClass2NameMap  	= ontData.getOcidNameMap();
-    final Map<String,Set<String>>  ocidClass2AllOffspringsMap = new HashMap<>();
+    final Map<String,Set<String>>  ocidClass2AllOffspringsMap = new HashMap<String,Set<String>>();
 
     /*
      * step 2: read and load smiles
      */
     final Map<String,String> toProcessOcid2SmilesMap = SmilesLoader.readSmiles( _parameters.getSmilesFilename() );
-    final List<String>       toProcessOcidList       = new ArrayList<>( toProcessOcid2SmilesMap.keySet() );
+    final List<String>       toProcessOcidList       = new ArrayList<String>( toProcessOcid2SmilesMap.keySet() );
 
     /* 
      * step 3: identify root class id 

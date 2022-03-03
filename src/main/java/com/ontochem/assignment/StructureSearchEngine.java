@@ -36,7 +36,7 @@ public class StructureSearchEngine {
 			
 			if ( module.equals( "Ambit" ) ) return searchBySubstructureAmbit( _smiles, _smarts );
 			
-			if ( module.equals( "Chemaxon" ) ) return searchBySubstructureChemaxon( _smiles, _smarts );
+			//if ( module.equals( "Chemaxon" ) ) return searchBySubstructureChemaxon( _smiles, _smarts );
 				
 		} catch ( Exception e ) {
 			System.out.println( "error searchBySubstructure: " + e );
