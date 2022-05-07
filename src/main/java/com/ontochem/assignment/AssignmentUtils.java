@@ -2,6 +2,7 @@ package com.ontochem.assignment;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -59,39 +60,50 @@ public class AssignmentUtils {
 			forkJoinPool.submit( () -> {
 			  
 				_ocidSetIn.parallelStream().forEach( ocid -> {
-
-					final String      smiles       = _ocid2smilesMap.get( ocid );
-					final Set<String> assignedList = new HashSet<>();
 					
-					Set<String> classIdList = Collections.singleton( rootClassId );
+					String smiles = _ocid2smilesMap.get( ocid );
 					
-					while ( ! classIdList.isEmpty() ) {
+					Set<String> classIdList 	= Collections.singleton( rootClassId );
+					Set<String> childrenList  	= new HashSet<String>();
+					Set<String> assignedList    = new HashSet<>();
+					
+					int count    = 0;
+					int countAss = 0;
+					int countAll = 0;
+					
+					while ( !classIdList.isEmpty() ) {
 					  
 						final Set<String> newIdList = new HashSet<String>(); 	//list of all ids for one hierarchy level
-							
+						
 						for ( String classId : classIdList ) {
 							
 							if ( assignedList.contains( classId ) ) continue;
 							
-							final List<String> smartsList = _ocidClass2smartsList.get( classId );
+							List<String> smartsList = _ocidClass2smartsList.get( classId );
 							
-							if ( !smartsList.isEmpty() ) {
+							if ( (smartsList != null) && !smartsList.isEmpty() ) {
+								count++;
 								if ( assign( smiles, smartsList, _module, _aromatic ) ) {
-									//System.out.println( ocid + " assigned to: "+ classId);
+									countAss++;
 									assignedList.add( classId );
+									countAll++;
 								} 
 							} else {
-								assignedList.add( classId );
+								if ( !_ocidClass2childMap.isEmpty() ) assignedList.add( classId );
+								countAll++;
 							}
 							
-							final Set<String> childrenList = _ocidClass2childMap.get( classId );
-							if ( childrenList != null ) {
+							childrenList = _ocidClass2childMap.get( classId );
+							if ( ( childrenList != null ) && !childrenList.isEmpty() ){
 								newIdList.addAll( childrenList );
 							}
 						}
 						classIdList = newIdList;
 					}
 					ocidClass2CompoundMap.put( ocid, assignedList );
+					System.out.println( "count all assigned ids: " + countAll);
+					System.out.println( "count all evaluated smarts: " + count);
+					System.out.println( "count assigned smarts: " + countAss);
 				});
 			}).get();
 			

@@ -204,9 +204,11 @@ public class AssignCompounds {
 	     */
 	    final Map<String,Set<String>>  ocidClass2AllAncestorsMap  = new HashMap<String, Set<String>>();
 	    for ( String ocidClass : ocidClass2NameMap.keySet() ) {
-	    	ocidClass2AllAncestorsMap.put( ocidClass, ancestors( ocidClass, ocidClass2ParentMap ) );
+	    	Set<String> ancestorSet = ancestors( ocidClass, ocidClass2ParentMap );
+	    	ocidClass2AllAncestorsMap.put( ocidClass, ancestorSet );
 	    }
 	    for ( String ocidClass : ocidClass2NameMap.keySet() ) {
+	    	Set<String> offspringSet = offsprings( ocidClass, ocidClass2ChildMap );
 	    	ocidClass2AllOffspringsMap.put( ocidClass, offsprings( ocidClass, ocidClass2ChildMap ) );
 	    }
 	    
@@ -234,34 +236,44 @@ public class AssignCompounds {
 	    	final Set<String> ocidClassSet2 = new HashSet<String>();
       
 		    for ( String ocid : ocidAssignmentMap.keySet() ) {
-		  
+		    	
 		    	ocidClassSet1.clear();
 		        ocidClassSet2.clear();
 		        
 		        final Set<String> ocidClassSet = ocidAssignmentMap.get( ocid );
-  
+		        System.out.println( ocid + " assigned to: "+ocidAssignmentMap.get(ocid).size() );
+			    
 		        // check ancestors, omit concept if a parent is missing
 		        for ( String ocidClass : ocidClassSet ) {
 		        	
 		        	final Set<String> classAllAncestorsSet = ocidClass2AllAncestorsMap.get( ocidClass );
   
 		        	// leave out if a concept has no parents
-		        	if ( ! ocidClass2ParentMap.containsKey( ocidClass ) ) continue;
+		        	if ( ocidClass2ParentMap.get( ocidClass ).isEmpty() ) continue;
   
 		        	// leave out if a ancestor concept is missing
-		        	final boolean missingParent = classAllAncestorsSet.stream()
-                                              .anyMatch( ancestor -> ! ocidClassSet.contains( ancestor ) );
-          
-		        	if ( missingParent || ( ! ocidClass2SmartsList.containsKey( ocidClass ) ) ) {
+		        	//final boolean missingParent = classAllAncestorsSet.stream()
+                     //                         .anyMatch( ancestor -> ! ocidClassSet.contains( ancestor ) );
+		        	boolean missingParent = false;
+					for ( String ancestor : classAllAncestorsSet ) {
+						if ( !ocidClassSet.contains( ancestor ) ) {
+							//System.out.println( ocidClass+" missing parent: "+ancestor);
+							missingParent = true;
+							continue;
+						}
+	    			}
+					
+		        	if ( missingParent || ( ocidClass2SmartsList.get( ocidClass ).isEmpty() ) ) {
 		        		continue;
 		        	} else {
 		        		ocidClassSet1.add( ocidClass );
 		        	}
 		        }
-  
+		        System.out.println( ocid + " assigned to: "+ocidClassSet1.size() );
+			    
 		        // check for children present, omit concept if valid child with smarts has been found
 		        for ( String ocidClass : ocidClassSet1 ) {
-		          
+		        	//System.out.println( ocid + " assigned to 1: "+ocidClass );
 		        	boolean validChild = false;
 		        	final Set<String> classAllOffspringsSet = ocidClass2AllOffspringsMap.get( ocidClass );
 		  

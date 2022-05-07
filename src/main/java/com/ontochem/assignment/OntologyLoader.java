@@ -85,7 +85,8 @@ public class OntologyLoader {
 
 		final boolean isModuleCdkOrAmbit = ChemLib.CHEMLIB_CDK.equals( _module ) || ChemLib.CHEMLIB_AMBIT.equals( _module );
 		final boolean isModuleCA         = ChemLib.CHEMLIB_CA.equals( _module );
-
+		
+		
 		try ( BufferedReader inObo = new BufferedReader( 
 		                               new InputStreamReader( 
 		                                 new FileInputStream( new File( _inObo ) ), "UTF8" ) ); ) {
@@ -94,12 +95,12 @@ public class OntologyLoader {
 	  		while ( ( inLine = inObo.readLine() ) != null ) {
 	  			
 	  			if ( inLine.startsWith( "[Term]" ) ) {
-			      
 	  				final List<String> smartsList	= new ArrayList<>();
-	  				final Set<String>  childSet	= new HashSet<>();
+	  				final Set<String>  childSet		= new HashSet<>();
 	  				final Set<String>  parentSet	= new HashSet<>();
-	  				String name = null;
-	  				String id   = null;
+	  				String name 					= null;
+	  				String id   					= null;
+	  				boolean obsolete 				= false;
 	
 	  				String inConceptLine = null;
 	  				while ( ( inConceptLine = inObo.readLine() ) != null ) {
@@ -108,14 +109,11 @@ public class OntologyLoader {
 				        	throw new IOException( "Start of new Stanza without previous empty line." );
 				        }
 			        
-				        if ( inConceptLine.trim().isEmpty() ) {
-				        	break;
-				        }
-			        
+				        if ( inConceptLine.trim().isEmpty() ) break;
+				        
 				        int tagSepOff = inConceptLine.indexOf( ':' );
-				        if ( tagSepOff < 2 ) {
-				        	continue;
-				        }
+				        if ( tagSepOff < 2 ) continue;
+				        
 					    final String tag   = inConceptLine.substring( 0, tagSepOff );
 					    String value = inConceptLine.substring( tagSepOff + 1 ).trim();
 			        
@@ -123,16 +121,15 @@ public class OntologyLoader {
 					    if ( commentSepOff >= 0 ) {
 					    	value = value.substring( 0, commentSepOff ).trim();
 					    }
+					    
+					    if ( tag.startsWith( "is_obsolete" )) obsolete = true;
 			        
-				        if ( "id".equals( tag ) ) {
-				        	id = value;
-				        } else if ( "name".equals( tag ) ) {
-				        	name = value;
-					    } else if ( "is_a".equals( tag ) ) {
-					    	parentSet.add( value ); 
-				        } else if ( "has_a".equals( tag ) ) {
-				        	childSet.add( value );
-				        } else if ( tag.endsWith( "_smarts" ) ) {
+				        if ( "id".equals( tag ) ) 			id = value;
+				        else if ( "name".equals( tag ) ) 	name = value;
+					    else if ( "is_a".equals( tag ) ) 	parentSet.add( value ); 
+				        else if ( "has_a".equals( tag ) ) 	childSet.add( value );
+				        
+				        else if ( tag.endsWith( "_smarts" ) ) {
 				        	if ( ( isModuleCdkOrAmbit && "cdk_smarts".equals( tag ) ) ||
 				               ( isModuleCA && "oc_smarts".equals( tag ) ) ) {
 				        		String smarts = value.replace("\\!","!").replace("\\\\","\\");
@@ -142,13 +139,12 @@ public class OntologyLoader {
 	  				}
 			      
 	  				if ( id != null ) {
-			            //leaves without smarts are useless!!!
-			            if ( ! ( ( ! parentSet.isEmpty() ) && smartsList.isEmpty() && childSet.isEmpty() ) ) {
-			  		        if ( name != null ) ontData.setOcidName( id, name );
-			  		        ontData.setOcidChildren( id, childSet );
-			  		        ontData.setOcidParents( id, parentSet );
-			  		        ontData.setOcidSmarts( id, smartsList );
-			            }
+			            if ( obsolete ) continue;
+			  		    if ( name != null ) ontData.setOcidName( id, name );
+			  		    ontData.setOcidChildren( id, childSet );
+			  		    ontData.setOcidParents( id, parentSet );
+			  		    ontData.setOcidSmarts( id, smartsList );
+			            obsolete = false;
 	  				}
 	  			}
 	  		}
