@@ -1,5 +1,7 @@
 package com.ontochem.assignment;
 
+import java.util.logging.Logger;
+
 import org.openscience.cdk.aromaticity.Aromaticity;
 import org.openscience.cdk.aromaticity.ElectronDonation;
 import org.openscience.cdk.graph.CycleFinder;
@@ -29,14 +31,20 @@ import ambit2.base.exceptions.EmptyMoleculeException;
  **/
 public class StructureSearchEngine {
 	
-	public static int searchBySubstructure( String _smiles, String _smarts, String module) throws Exception {
+	private final static Logger LOG = Logger.getLogger( StructureSearchEngine.class.getName() );
+	
+	public static int searchBySubstructure( String _smiles, String _smarts, String module, boolean _aromatic) throws Exception {
 		int rsp = 0;
 		try {
-			if ( module.equals( "Cdk" ) ) return searchBySubstructureCdk( _smiles, _smarts );
+			if ( module.toLowerCase().equals( "cdk" ) ) return searchBySubstructureCdk( _smiles, _smarts );
 			
-			if ( module.equals( "Ambit" ) ) return searchBySubstructureAmbit( _smiles, _smarts );
+			else if ( module.toLowerCase().equals( "ambit" ) ) return searchBySubstructureAmbit( _smiles, _smarts, _aromatic );
 			
-			//if ( module.equals( "Chemaxon" ) ) return searchBySubstructureChemaxon( _smiles, _smarts );
+			//else if ( module.equals( "Chemaxon" ) ) return searchBySubstructureChemaxon( _smiles, _smarts );
+			
+			else {
+				LOG.warning( "error: chemistry module not found ");
+			}
 				
 		} catch ( Exception e ) {
 			System.out.println( "error searchBySubstructure: " + e );
@@ -46,7 +54,7 @@ public class StructureSearchEngine {
 	
 	/*
 	 * chemaxon substructure searcher
-	 */
+	 
 	public static int searchBySubstructureChemaxon( String targetSmiles, String targetQuery ) {
 		try  {
 			String regex = "\\s+$";
@@ -70,7 +78,7 @@ public class StructureSearchEngine {
 			System.err.println( "Chemaxon error SSS: " + e) ;
 			return -1;
 		}
-	}
+	}*/
 	
 	/*
 	 * CDK SSS substructure searcher
@@ -93,9 +101,9 @@ public class StructureSearchEngine {
 	/*
 	 * Ambit SSS substructure searcher
 	 */
-	public static int searchBySubstructureAmbit( String _smiles, String _smarts ) { 
+	public static int searchBySubstructureAmbit( String _smiles, String _smarts, boolean _aromatic ) { 
 		try {
-			IAtomContainer mol = SmilesHandler( _smiles ) ;  //CDK container
+			IAtomContainer mol = SmilesHandler( _smiles, _aromatic ) ;  //CDK container
 			SmartsManager man = new ambit2.smarts.SmartsManager( SilentChemObjectBuilder.getInstance() );
 			man.setUseCDKIsomorphismTester( false );
 			try {
@@ -142,14 +150,16 @@ public class StructureSearchEngine {
 	/*
 	 * smiles preprocessing using CDK version 2.4.0
 	 */
-	public static IAtomContainer SmilesHandler( String _smiles ) {
+	public static IAtomContainer SmilesHandler( String _smiles, boolean _aromatic ) {
 		try {
 			IAtomContainer 	 mol 	= SmartsHelper.getMoleculeFromSmiles( _smiles, false );
-			ElectronDonation model  = ElectronDonation.daylight();
+			ElectronDonation model  = ElectronDonation.cdk(); //ElectronDonation.daylight();
 			CycleFinder      cycles = Cycles.or( Cycles.all(), Cycles.all(6) );
 			Aromaticity      aroma 	= new Aromaticity( model, cycles );
-			aroma.apply( mol );
-			AtomContainerManipulator.convertImplicitToExplicitHydrogens( mol );
+			if ( _aromatic ) {
+				aroma.apply( mol );
+				//AtomContainerManipulator.convertImplicitToExplicitHydrogens( mol );
+			}
 			return  mol;
 		} catch ( Exception e ) {
 			System.err.println( "Smiles Handler Error " + e );
@@ -164,7 +174,7 @@ public class StructureSearchEngine {
 		try {
 			ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.daylight();
 			CycleFinder cycles = Cycles.all();
-			Aromaticity arom = new org.openscience.cdk.aromaticity.Aromaticity(model,cycles);
+			Aromaticity arom = new org.openscience.cdk.aromaticity.Aromaticity( model, cycles );
 			return arom;
 		} catch (Exception e) {
 			System.err.println( "load Aromatization Module Error " + e );

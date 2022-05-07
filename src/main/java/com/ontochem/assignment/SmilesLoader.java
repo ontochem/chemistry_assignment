@@ -44,6 +44,8 @@ public class SmilesLoader {
    * @throws IOException
    */
 	public static Map<String,String> readSmiles( String _fileName ) throws IOException {
+		
+		LOG.info( "reading compounds: " + _fileName );
 	  
 		try ( BufferedReader inCsv = new BufferedReader( 
 		                               new InputStreamReader(
@@ -68,7 +70,7 @@ public class SmilesLoader {
 				//System.out.println( "\tread " + ocid + " " + smiles );
 			}
 			
-			LOG.info( "read compounds with smiles: " + count );
+			//LOG.info( "...read smiles: " + count );
 	    
 	    return targetMap;
 		}
