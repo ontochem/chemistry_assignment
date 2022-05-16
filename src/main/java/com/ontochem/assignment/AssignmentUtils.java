@@ -101,9 +101,6 @@ public class AssignmentUtils {
 						classIdList = newIdList;
 					}
 					ocidClass2CompoundMap.put( ocid, assignedList );
-					System.out.println( "count all assigned ids: " + countAll);
-					System.out.println( "count all evaluated smarts: " + count);
-					System.out.println( "count assigned smarts: " + countAss);
 				});
 			}).get();
 			
@@ -562,7 +559,7 @@ public class AssignmentUtils {
 				else return 0;
 			}
 		} catch ( Exception e ) {
-			System.err.println( "error in processing smarts multiplicity: " + e ) ;
+			LOG.info( "ERROR: error in processing smarts multiplicity: " + e ) ;
 			return -1;
 		}
 	}
@@ -574,7 +571,7 @@ public class AssignmentUtils {
 		try {
 			return StructureSearchEngine.searchBySubstructure( target, query, module, aromatic ) ;
 		} catch (Exception e)  {
-			System.out.println("SubStructureSearchEngine Error "+e);
+			LOG.info( "ERROR: SubStructureSearchEngine Error "+e);
 		}
 		return -1;
 	}

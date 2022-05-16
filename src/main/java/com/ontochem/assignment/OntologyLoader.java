@@ -77,7 +77,7 @@ public class OntologyLoader {
 	 * 
 	 * @throws IOException
 	 */
-	public static OntologyData readObo( String _inObo, String _module ) throws IOException {
+	public static OntologyData readObo( String _inObo, String _module, boolean _aromatic ) throws IOException {
 		
 		LOG.info( "reading OBO: " + _inObo );
 		
@@ -128,20 +128,18 @@ public class OntologyLoader {
 				        else if ( "name".equals( tag ) ) 	name = value;
 					    else if ( "is_a".equals( tag ) ) 	parentSet.add( value ); 
 				        else if ( "has_a".equals( tag ) ) 	childSet.add( value );
-				        
-				        else if ( tag.endsWith( "_smarts" ) ) {
-				        	if ( ( isModuleCdkOrAmbit && "cdk_smarts".equals( tag ) ) ||
-				               ( isModuleCA && "oc_smarts".equals( tag ) ) ) {
-				        		String smarts = value.replace("\\!","!").replace("\\\\","\\");
-				        		smartsList.add( smarts );
-				        	}
+				        else if ( tag.endsWith( "smarts" ) ) {
+				        	String smarts = value.replace("\\!","!").replace("\\\\","\\");
+				        	if ( ( isModuleCdkOrAmbit && "cdk_smarts".equals( tag ) && !_aromatic ) ) smartsList.add( smarts );
+				        	else if ( isModuleCdkOrAmbit && "cdk_aromsmarts".equals( tag ) && _aromatic ) smartsList.add( smarts );
+				        	else if ( isModuleCA && "oc_smarts".equals( tag ) ) smartsList.add( smarts );
 				        }
 	  				}
 			      
 	  				if ( id != null ) {
 			            if ( obsolete ) continue;
 			  		    if ( name != null ) ontData.setOcidName( id, name );
-			  		    ontData.setOcidChildren( id, childSet );
+			  		    if ( !childSet.isEmpty() ) ontData.setOcidChildren( id, childSet );
 			  		    ontData.setOcidParents( id, parentSet );
 			  		    ontData.setOcidSmarts( id, smartsList );
 			            obsolete = false;
@@ -154,6 +152,6 @@ public class OntologyLoader {
 	
 	// ==== command line usage (testing) ======================================
 	public static void main( String[] _args ) throws Exception {
-		readObo( _args[0], _args[1] );
+		readObo( _args[0], _args[1], Boolean.valueOf( _args[2] )  );
 	}
 }

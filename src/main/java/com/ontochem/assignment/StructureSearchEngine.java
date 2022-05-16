@@ -8,6 +8,7 @@ import org.openscience.cdk.graph.CycleFinder;
 import org.openscience.cdk.graph.Cycles;
 import org.openscience.cdk.interfaces.IAtomContainer;
 import org.openscience.cdk.silent.SilentChemObjectBuilder;
+import org.openscience.cdk.smiles.SmiFlavor;
 import org.openscience.cdk.smiles.SmilesParser;
 import org.openscience.cdk.tools.manipulator.AtomContainerManipulator;
 
@@ -47,7 +48,7 @@ public class StructureSearchEngine {
 			}
 				
 		} catch ( Exception e ) {
-			System.out.println( "error searchBySubstructure: " + e );
+			LOG.info( "ERROR: error in searchBySubstructure module " + e );
 		}
 		return -1;
 	}
@@ -93,7 +94,7 @@ public class StructureSearchEngine {
 			return nUniqueHits;
 			
 	    } catch (Exception e) {
-			System.out.println( "CDK error SSS: " + _smiles + " smarts: " + _smarts );
+	    	LOG.info( "ERROR: CDK error SSS: " + _smiles + " smarts: " + _smarts );
 			return -1;
 		}
 	}
@@ -105,7 +106,7 @@ public class StructureSearchEngine {
 		try {
 			IAtomContainer mol = SmilesHandler( _smiles, _aromatic ) ;  //CDK container
 			SmartsManager man = new ambit2.smarts.SmartsManager( SilentChemObjectBuilder.getInstance() );
-			man.setUseCDKIsomorphismTester( false );
+			man.setUseCDKIsomorphismTester( true );
 			try {
 				man.setQuery( _smarts );
 				String error = man.getErrors();
@@ -119,7 +120,7 @@ public class StructureSearchEngine {
 			if ( man.searchIn( mol ) ) return 1;
 			else return 0;
 	    } catch ( Exception e ) {
-			System.out.println( "Ambit substructure search error: " + _smiles + " smarts: " + _smarts );
+	    	LOG.info( "ERROR: Ambit substructure search error: " + _smiles + " smarts: " + _smarts );
 		}
 		return -1;
 	}
@@ -130,7 +131,7 @@ public class StructureSearchEngine {
 	public static int searchBySubstructureAmbitAllInstances( String _smiles, String _smarts ) throws Exception {
         
 		try {
-        	IAtomContainer mol = SmartsHelper.getMoleculeFromSmiles(_smiles, true) ;
+        	IAtomContainer mol = SmartsHelper.getMoleculeFromSmiles( _smiles, false ) ;
         	SmartsParser sp = new SmartsParser();
             IsomorphismTester isoTester = new IsomorphismTester();
             GroupMatch groupMatch;
@@ -142,7 +143,7 @@ public class StructureSearchEngine {
             return posCount;
             
         } catch (Exception e) {
-            System.out.println( "Ambit error all instances processing: " +_smiles + " smarts: "+_smarts);
+        	LOG.info( "ERROR: Ambit error all instances processing: " +_smiles + " smarts: "+_smarts);
         }
 		return -1;
     }	 
@@ -153,16 +154,14 @@ public class StructureSearchEngine {
 	public static IAtomContainer SmilesHandler( String _smiles, boolean _aromatic ) {
 		try {
 			IAtomContainer 	 mol 	= SmartsHelper.getMoleculeFromSmiles( _smiles, false );
-			ElectronDonation model  = ElectronDonation.cdk(); //ElectronDonation.daylight();
+			//ElectronDonation model  = ElectronDonation.daylight();
+			ElectronDonation model  = ElectronDonation.cdk();
 			CycleFinder      cycles = Cycles.or( Cycles.all(), Cycles.all(6) );
 			Aromaticity      aroma 	= new Aromaticity( model, cycles );
-			if ( _aromatic ) {
-				aroma.apply( mol );
-				//AtomContainerManipulator.convertImplicitToExplicitHydrogens( mol );
-			}
+			if ( _aromatic ) aroma.apply( mol );
 			return  mol;
 		} catch ( Exception e ) {
-			System.err.println( "Smiles Handler Error " + e );
+			LOG.info( "ERROR: Smiles Handler Error " + e );
 			return null;
 		}
 	}
@@ -172,7 +171,8 @@ public class StructureSearchEngine {
 	 */
 	public static Aromaticity loadAromatizationModule() {
 		try {
-			ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.daylight();
+			//ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.daylight();
+			ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.cdk();
 			CycleFinder cycles = Cycles.all();
 			Aromaticity arom = new org.openscience.cdk.aromaticity.Aromaticity( model, cycles );
 			return arom;
@@ -180,6 +180,19 @@ public class StructureSearchEngine {
 			System.err.println( "load Aromatization Module Error " + e );
 			return null;
 		}
+	}
+	
+	public static org.openscience.cdk.smiles.SmilesGenerator getCdkSmilesGenerator() {
+		org.openscience.cdk.smiles.SmilesGenerator smilesG = 
+			new org.openscience.cdk.smiles.SmilesGenerator( SmiFlavor.Isomeric );
+		return smilesG;
+	}
+	
+	public static org.openscience.cdk.smiles.SmilesParser getCdkSmilesParser() {
+		org.openscience.cdk.smiles.SmilesParser smilesP = 
+			new org.openscience.cdk.smiles.SmilesParser( SilentChemObjectBuilder.getInstance() );
+		smilesP.kekulise( true );
+		return smilesP;
 	}
 
 }

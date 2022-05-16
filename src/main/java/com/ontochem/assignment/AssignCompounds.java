@@ -27,6 +27,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -41,9 +42,9 @@ import com.ontochem.assignment.OntologyLoader.OntologyData;
  *
  * <h3>Changelog</h3>
  * <ul>
- *   <li>2022-04-24
+ *   <li>2022-05-16
  *     <ul>
- *       <li>second version</li>
+ *       <li>third version</li>
  *     </ul>
  *   </li>
  * </ul>
@@ -68,7 +69,7 @@ public class AssignCompounds {
 	    private String  outFilename;
 	    private int     nThreads = 1;
 	    private boolean appendModuleInfoToFilename = true;
-	    private boolean writeToStandardOut = false;
+	    private boolean writeToStandardOut = true;
     
 	    // ---- getter/setter -----------------------------------------
 	    public String getModule() { return module; }
@@ -164,17 +165,33 @@ public class AssignCompounds {
 		LOG.info( "using chemistry module: " + _parameters.getModule() );
 		
 		long startTime = System.nanoTime();
-		boolean aromatic = false;
+		boolean aromatic = true;
 
 	    /*
 	     * step 1: read chemistry ontology with smarts
 	     */
-	    OntologyData ontData = OntologyLoader.readObo( _parameters.getOntologyFilename(), _parameters.getModule() );
+	    OntologyData ontData = OntologyLoader.readObo( _parameters.getOntologyFilename(), _parameters.getModule(), aromatic );
 	    final Map<String,Set<String>>  ocidClass2ChildMap   		= ontData.getOcidChildMap();
 	    final Map<String,Set<String>>  ocidClass2ParentMap  		= ontData.getOcidParentMap();
 	    final Map<String,List<String>> ocidClass2SmartsList 		= ontData.getOcidSmartsMap();
 	    final Map<String,String>       ocidClass2NameMap  			= ontData.getOcidNameMap();
 	    final Map<String,Set<String>>  ocidClass2AllOffspringsMap 	= new HashMap<String,Set<String>>();
+	    if ( ocidClass2ChildMap.size() == 0 ){
+			LOG.info("generating ocidClass2ChildMap as the has_a relationship was not found in the OBO ...");
+			List<String> idList1 = new ArrayList<>();
+	   		ocidClass2ParentMap.forEach( ( key, value )->{ idList1.addAll( value ); } );
+			for ( String id : idList1 ) {
+				List<String> list1 = new ArrayList<>();
+				Iterator<String> itre = ocidClass2ParentMap.keySet().iterator();
+				while ( itre.hasNext() ) {
+					String key = itre.next();
+					Set<String> parents = ocidClass2ParentMap.get(key);
+					if( parents.contains( id ) ) list1.add( key );
+				}
+				HashSet<String> hsList1 = new HashSet<String>( list1 );
+				ocidClass2ChildMap.put( id, hsList1 );
+			}
+		}
 	    
 	    /* 
 		 * step 2: identify root class id 
@@ -241,8 +258,7 @@ public class AssignCompounds {
 		        ocidClassSet2.clear();
 		        
 		        final Set<String> ocidClassSet = ocidAssignmentMap.get( ocid );
-		        System.out.println( ocid + " assigned to: "+ocidAssignmentMap.get(ocid).size() );
-			    
+		        
 		        // check ancestors, omit concept if a parent is missing
 		        for ( String ocidClass : ocidClassSet ) {
 		        	
@@ -269,8 +285,7 @@ public class AssignCompounds {
 		        		ocidClassSet1.add( ocidClass );
 		        	}
 		        }
-		        System.out.println( ocid + " assigned to: "+ocidClassSet1.size() );
-			    
+		        
 		        // check for children present, omit concept if valid child with smarts has been found
 		        for ( String ocidClass : ocidClassSet1 ) {
 		        	//System.out.println( ocid + " assigned to 1: "+ocidClass );
@@ -297,7 +312,8 @@ public class AssignCompounds {
 		        	System.out.println( ocid + "\t" + toProcessOcid2SmilesMap.get( ocid ) );
 		        }
 		        
-		        out.append( ocid + "\t" + toProcessOcid2SmilesMap.get(ocid) +"\n");
+		        out.append( ocid + "\t" + toProcessOcid2SmilesMap.get( ocid ) +"\n");
+		        
 		        for ( String newClass : ocidClassSet2 ) {
 		        	out.append( "is_a\t" ).append( newClass ).append( "\t" )
                             .append( ocidClass2NameMap.get( newClass ) ).append( "\n" );
@@ -306,7 +322,7 @@ public class AssignCompounds {
 		        	}
 		        }
 		        out.write( "\n" );
-		    }  // for
+		    }  
 	    }
     
 	    long duration = System.nanoTime() - startTime;
@@ -340,7 +356,6 @@ public class AssignCompounds {
 			idList = newIdList;
 			ancestorList.addAll( newIdList ); //list of all ids for down of classId
 		}
-		
 		return ancestorList;
 	}
 	
