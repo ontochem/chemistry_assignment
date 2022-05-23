@@ -154,8 +154,8 @@ public class StructureSearchEngine {
 	public static IAtomContainer SmilesHandler( String _smiles, boolean _aromatic ) {
 		try {
 			IAtomContainer 	 mol 	= SmartsHelper.getMoleculeFromSmiles( _smiles, false );
-			//ElectronDonation model  = ElectronDonation.daylight();
-			ElectronDonation model  = ElectronDonation.cdk();
+			ElectronDonation model  = ElectronDonation.daylight();
+			//ElectronDonation model  = ElectronDonation.cdk();
 			CycleFinder      cycles = Cycles.or( Cycles.all(), Cycles.all(6) );
 			Aromaticity      aroma 	= new Aromaticity( model, cycles );
 			if ( _aromatic ) aroma.apply( mol );
@@ -171,8 +171,8 @@ public class StructureSearchEngine {
 	 */
 	public static Aromaticity loadAromatizationModule() {
 		try {
-			//ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.daylight();
-			ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.cdk();
+			ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.daylight();
+			//ElectronDonation model = org.openscience.cdk.aromaticity.ElectronDonation.cdk();
 			CycleFinder cycles = Cycles.all();
 			Aromaticity arom = new org.openscience.cdk.aromaticity.Aromaticity( model, cycles );
 			return arom;
