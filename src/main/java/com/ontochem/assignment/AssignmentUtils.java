@@ -40,6 +40,7 @@ public class AssignmentUtils {
 	 * @param _ocidSetIn
 	 * @param _ocid2smilesMap
 	 * @param _ocidClass2smartsList
+	 * @param _ocidClass2parentMap
 	 * @param _ocidClass2childMap
 	 * 
 	 * @return
@@ -51,6 +52,7 @@ public class AssignmentUtils {
                                        List<String> _ocidSetIn, 
                                        Map<String,String> _ocid2smilesMap, 
                                        Map<String,List<String>> _ocidClass2smartsList, 
+                                       Map<String,Set<String>> _ocidClass2parentMap,
                                        Map<String,Set<String>> _ocidClass2childMap ) throws IOException {
     	
 		final Map<String,Set<String>> ocidClass2CompoundMap = new ConcurrentHashMap<>();
@@ -62,7 +64,7 @@ public class AssignmentUtils {
 				_ocidSetIn.parallelStream().forEach( ocid -> {
 					
 					String smiles = _ocid2smilesMap.get( ocid );
-					
+					System.out.println( ocid );
 					Set<String> classIdList 	= Collections.singleton( rootClassId );
 					Set<String> childrenList  	= new HashSet<String>();
 					Set<String> assignedList    = new HashSet<>();
@@ -79,9 +81,17 @@ public class AssignmentUtils {
 							
 							if ( assignedList.contains( classId ) ) continue;
 							
+							boolean parentNotAssigned = false;
+							Set<String> classParents = _ocidClass2parentMap.get( classId );
+							for ( String parent : classParents ) {
+								if ( parentNotAssigned ) break;
+								if ( !assignedList.contains( parent ) ) parentNotAssigned = true;
+							}
+							
+							if ( parentNotAssigned ) continue;
 							List<String> smartsList = _ocidClass2smartsList.get( classId );
 							
-							if ( (smartsList != null) && !smartsList.isEmpty() ) {
+							if ( ( smartsList != null ) && !smartsList.isEmpty() ) {
 								count++;
 								if ( assign( smiles, smartsList, _module, _aromatic ) ) {
 									countAss++;
@@ -105,7 +115,7 @@ public class AssignmentUtils {
 			}).get();
 			
 			forkJoinPool.shutdown();
-			
+		
 		} catch ( Exception e ) {
 			throw new IOException( "Error in parallel hierarchical class assignment: " + e.getMessage(), e );
 		}

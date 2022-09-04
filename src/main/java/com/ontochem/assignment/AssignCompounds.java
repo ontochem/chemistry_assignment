@@ -39,12 +39,13 @@ import com.ontochem.assignment.OntologyLoader.OntologyData;
 
 /**
  * Compound assignment to chemical structure classes in a ontology
+ * version 1.05
  *
  * <h3>Changelog</h3>
  * <ul>
- *   <li>2022-05-16
+ *   <li>2022-09-03
  *     <ul>
- *       <li>third version</li>
+ *       <li>fifth version</li>
  *     </ul>
  *   </li>
  * </ul>
@@ -67,9 +68,12 @@ public class AssignCompounds {
 	    private String  module;
 	    private String  smilesFilename;
 	    private String  outFilename;
+	    private String  statisticsFilename;
 	    private int     nThreads = 1;
-	    private boolean appendModuleInfoToFilename = true;
-	    private boolean writeToStandardOut = true;
+	    private int 	max = 1;
+	    private boolean appendModuleInfoToFilename = false;
+	    private boolean writeToStandardOut = false;
+	    private boolean writeLeavesOnly = true;
     
 	    // ---- getter/setter -----------------------------------------
 	    public String getModule() { return module; }
@@ -92,6 +96,11 @@ public class AssignCompounds {
 	    	ontologyFilename = trimWithEmptyAsNull( _ontologyFilename ); return this;
 	    }
     
+	    public boolean isAppendModuleInfoToFilename() { return appendModuleInfoToFilename; }
+	    public AssignmentParameters setAppendModuleInfoToFilename( boolean _appendModuleInfoToFilename ) {
+	    	appendModuleInfoToFilename = _appendModuleInfoToFilename; return this;
+	    }
+    
 	    public String getOutFilename() { return outFilename; }
 	    public AssignmentParameters setOutFilename( String _outFilename ) {
 	    	outFilename = trimWithEmptyAsNull( _outFilename ); return this;
@@ -101,15 +110,25 @@ public class AssignCompounds {
 	    public AssignmentParameters setSmilesFilename( String _smilesFilename ) {
 	    	smilesFilename = trimWithEmptyAsNull( _smilesFilename ); return this;
 	    }
+	    
+	    public int getMax() { return max; }
+	    public AssignmentParameters setMax( int _max ) {
+	    	max = _max; return this;
+	    }
     
-	    public boolean isAppendModuleInfoToFilename() { return appendModuleInfoToFilename; }
-	    public AssignmentParameters setAppendModuleInfoToFilename( boolean _appendModuleInfoToFilename ) {
-	    	appendModuleInfoToFilename = _appendModuleInfoToFilename; return this;
+	    public String getStatisticsFilename() { return statisticsFilename; }
+	    public AssignmentParameters setStatisticsFilename( String _statisticsFilename ) {
+	    	statisticsFilename = trimWithEmptyAsNull( _statisticsFilename ); return this;
 	    }
     
 	    public boolean isWriteToStandardOut() { return writeToStandardOut; }
 	    public AssignmentParameters setWriteToStandardOut( boolean _writeToStandardOut ) {
 	    	writeToStandardOut = _writeToStandardOut; return this;
+	    }
+	    
+	    public boolean isWriteLeavesOnly() { return writeLeavesOnly; }
+	    public AssignmentParameters setWriteLeavesOnly( boolean _writeLeavesOnly ) {
+	    	writeLeavesOnly = _writeLeavesOnly; return this;
 	    }
     
 	    /**
@@ -176,6 +195,8 @@ public class AssignCompounds {
 	    final Map<String,List<String>> ocidClass2SmartsList 		= ontData.getOcidSmartsMap();
 	    final Map<String,String>       ocidClass2NameMap  			= ontData.getOcidNameMap();
 	    final Map<String,Set<String>>  ocidClass2AllOffspringsMap 	= new HashMap<String,Set<String>>();
+	    final Map<String,Set<String>>  ocid2ancestorsMap 			= new HashMap<String,Set<String>>();
+	    
 	    if ( ocidClass2ChildMap.size() == 0 ){
 			LOG.info("generating ocidClass2ChildMap as the has_a relationship was not found in the OBO ...");
 			List<String> idList1 = new ArrayList<>();
@@ -213,7 +234,7 @@ public class AssignCompounds {
 	    /*
 	     * step 3: read and load smiles
 	     */
-	    final Map<String,String> toProcessOcid2SmilesMap = SmilesLoader.readSmiles( _parameters.getSmilesFilename() );
+	    final Map<String,String> toProcessOcid2SmilesMap = SmilesLoader.readSmiles( _parameters.getSmilesFilename(), _parameters.getMax() );
 	    final List<String>       toProcessOcidList       = new ArrayList<String>( toProcessOcid2SmilesMap.keySet() );
 	    
 	    /*
@@ -234,23 +255,24 @@ public class AssignCompounds {
 	     */
 	    final Map<String,Set<String>> ocidAssignmentMap = 
 	    		AssignmentUtils.hierarchicalParallelClassAssignment( rootId, _parameters.getModule(), aromatic,
-                                                              		_parameters.getnThreads(), 
-                                                              		toProcessOcidList, 
-                                                              		toProcessOcid2SmilesMap, 
-                                                              		ocidClass2SmartsList, 
-                                                              		ocidClass2ChildMap );
+                                                              		 _parameters.getnThreads(), 
+                                                              		 toProcessOcidList, 
+                                                              		 toProcessOcid2SmilesMap, 
+                                                              		 ocidClass2SmartsList, 
+                                                              		 ocidClass2ParentMap,
+                                                              		 ocidClass2ChildMap 	);
 
+	    String outfile = _parameters.getOutFilename();
+	    if ( _parameters.isAppendModuleInfoToFilename() ) outfile = outfile + "_" + _parameters.getModule()+".tsv";
+	    
 	    try ( Writer out = new OutputStreamWriter(
-                          new BufferedOutputStream(
-                              new FileOutputStream( new File( _parameters.isAppendModuleInfoToFilename() ?
-                                  _parameters.getOutFilename() + 
-                                  "_" + _parameters.getModule() + ".tsv" : 
-                                    _parameters.getOutFilename() ) ) 
-                              ),
-                          StandardCharsets.UTF_8 ); ) {
+                             new BufferedOutputStream(
+                               new FileOutputStream( new File( outfile ) ) 
+                             ),
+                           StandardCharsets.UTF_8 ); ) {
 
-	    	final Set<String> ocidClassSet1 = new HashSet<String>();
-	    	final Set<String> ocidClassSet2 = new HashSet<String>();
+	    	Set<String> ocidClassSet1 = new HashSet<String>();
+	    	Set<String> ocidClassSet2 = new HashSet<String>();
       
 		    for ( String ocid : ocidAssignmentMap.keySet() ) {
 		    	
@@ -314,23 +336,66 @@ public class AssignCompounds {
 		        
 		        out.append( ocid + "\t" + toProcessOcid2SmilesMap.get( ocid ) +"\n");
 		        
-		        for ( String newClass : ocidClassSet2 ) {
-		        	out.append( "is_a\t" ).append( newClass ).append( "\t" )
-                            .append( ocidClass2NameMap.get( newClass ) ).append( "\n" );
-		        	if ( _parameters.isWriteToStandardOut() ) {
-		        		System.out.println( ocid + "\t" + newClass + "\t" + ocidClass2NameMap.get( newClass ) );
-		        	}
+		        if ( _parameters.isWriteLeavesOnly() ) {
+			        for ( String newClass : ocidClassSet2 ) {
+			        	out.append( "is_a\t" ).append( newClass ).append( "\t" )
+	                            .append( ocidClass2NameMap.get( newClass ) ).append( "\n" );
+			        	out.flush();
+			        	if ( _parameters.isWriteToStandardOut() ) {
+			        		System.out.println( ocid + "\t" + newClass + "\t" + ocidClass2NameMap.get( newClass ) );
+			        	}
+			        }
+		        } else {
+		        	for ( String newClass : ocidClassSet1 ) {
+			        	out.append( "is_a\t" ).append( newClass ).append( "\t" )
+	                            .append( ocidClass2NameMap.get( newClass ) ).append( "\n" );
+			        	out.flush();
+			        	if ( _parameters.isWriteToStandardOut() ) {
+			        		System.out.println( ocid + "\t" + newClass + "\t" + ocidClass2NameMap.get( newClass ) );
+			        	}
+			        }
 		        }
+		        System.out.println();
 		        out.write( "\n" );
+		        ocid2ancestorsMap.put( ocid, ocidClassSet1 );
+		        ocidClassSet1 = new HashSet<String>();
+		        ocidClassSet2 = new HashSet<String>();
 		    }  
+		    
+		    if ( _parameters.getStatisticsFilename() != null ) {
+		    	LOG.info( "statistics file name: " + _parameters.getStatisticsFilename() );
+		    	
+		    	Map<String,Integer> statisticsMap = new HashMap<String,Integer>();
+		    	
+		    	for ( String ocid : ocid2ancestorsMap.keySet() ) {
+		    		Set<String> classIdSet = ocid2ancestorsMap.get( ocid );
+		    		for ( String classId : classIdSet ) {
+		    			if ( statisticsMap.get( classId ) != null ) {
+		    				int count = statisticsMap.get( classId ) + 1;
+		    				statisticsMap.put( classId, count );
+		    			} else statisticsMap.put( classId, 1 );
+		    		}
+		    	}
+		    	
+		    	try ( Writer outStat = new OutputStreamWriter(
+                    new BufferedOutputStream(
+                      new FileOutputStream( new File( _parameters.getStatisticsFilename() ) ) 
+                    ), StandardCharsets.UTF_8 ); ) {
+		    		
+			    		for ( String classId : statisticsMap.keySet() ) {
+				        	outStat.append( classId ).append( "\t" ).append( ocidClass2NameMap.get( classId )+"\t").append( String.valueOf( statisticsMap.get( classId ) )).append( "\n" );
+				        }
+		    	}
+	    	
+		    } else LOG.info( "no statistics file written.");
 	    }
-    
 	    long duration = System.nanoTime() - startTime;
     
 	    LOG.info( "Elapsed time (s): " + TimeUnit.NANOSECONDS.toSeconds( duration ) );
 	}
     
 	// ------------------------------------------------------------------------
+	
 	/**
 	 * Get all ancestor IDs for provided compound class concept id.
 	 * 
@@ -391,6 +456,7 @@ public class AssignCompounds {
 	
 	// ==== command line usage ================================================
 	// ------------------------------------------------------------------------
+	
 	/**
 	 * Prints command line usage help and exits.
 	 * 
@@ -400,21 +466,28 @@ public class AssignCompounds {
     
 		System.err.println( "Run compound assignment.\n" +
                         "usage: java " + AssignCompounds.class.getName() + " OPTIONS\n" +
-                        "    -t  --threads  THREADCOUNT\n" +
-                        "                     number of threads to use for assignment\n" +
-                        "    -m  --module  CHEMLIB\n" +
-                        "                     chemical library to use, one of\n" +
-                        "                       Cdk\n" +
-                        "                       Ambit\n" +
-                        "                       ChemAxon\n" +
-                        "    -c  --obo  FILENAME\n" +
-                        "                     name of OBO file with chemical classes\n" +
-                        "    -s  --smiles-id  FILENAME\n" +
-                        "                     name of file with smiles and ids\n" +
-                        "    -o  --output-file  FILENAME\n" +
-                        "                     name of output file the assignments will be written to\n" + 
-                        "    -h  --help\n" +
-                        "                     print this help and exit\n" 
+                        "   -t    --threads      THREADCOUNT\n" +
+                        "                          number of threads to use for assignment\n" +
+                        "   -max                 MAX maximal number of smiles to process\n" +
+                        "   -m    --module       CHEMLIB\n" +
+                        "                          chemical library to use, one of\n" +
+                        "                            Cdk\n" +
+                        "                            Ambit\n" +
+                        "                            ChemAxon\n" +
+                        "   -c    --obo          FILENAME\n" +
+                        "                          name of OBO file with chemical classes\n" +
+                        "   -s    --smiles-id    FILENAME\n" +
+                        "                          name of file with smiles and ids\n" +
+                        "   -o   --output-file   FILENAME\n" +
+                        "                          name of output file the assignments will be written to\n" + 
+                        "   -a   --ancestors     ANCESTORS\n" +
+                        "                          all - creates output with all assigned classes\n" + 
+                        "                          parents - creates output with assigned parent classes\n" + 
+                        "   -sta  --statistics   FILENAME\n" +
+                        "                          creates output with all assigned compounds to classes\n" + 
+                        "   -ter  --terminal       write also to standard out\n" +
+                        "   -u    --append-module  append module name to output-file\n" +
+                        "   -h    --help           print this help and exit\n" 
                       );
     
 		System.exit( _exitCode );
@@ -436,6 +509,7 @@ public class AssignCompounds {
       
 			final String arg     = _args[ argIdx ];
 			argIdx++;
+			
 			final String nextArg = argIdx < _args.length ? _args[ argIdx ] : null;
       
 			if ( "-c".equals( arg ) || "--obo".equals( arg ) ) {
@@ -453,10 +527,28 @@ public class AssignCompounds {
 				parameters.setSmilesFilename( nextArg );
 			} else if ( "-o".equals( arg ) || "--output-file".equals( arg ) ) {
 				parameters.setOutFilename( nextArg );
+			} else if ( "-a".equals( arg ) || "--ancestors".equals( arg ) ) {
+				if ( nextArg.equals("all") ) parameters.setWriteLeavesOnly(false);
+				else if ( nextArg.equals("parents") ) parameters.setWriteLeavesOnly(true);
+				else {
+					System.err.println( nextArg+" Unknown parameter '" + arg + "'" );
+					usage( 1 );
+				}
+			} else if ( "-sta".equals( arg ) || "--statistics".equals( arg ) ) {
+				parameters.setStatisticsFilename( nextArg );
+			} else if ( "-ter".equals( arg ) || "--terminal".equals( arg ) ) {
+				parameters.setWriteToStandardOut( true );
+				argIdx = argIdx - 1;
+			} else if ( "-max".equals( arg ) || "--maximal".equals( arg ) ) {
+				parameters.setMax( Integer.parseInt( nextArg ) );
+			} else if ( "-app".equals( arg ) || "--append-module".equals( arg ) ) {
+				parameters.setAppendModuleInfoToFilename( true );
+				argIdx = argIdx - 1;
 			} else if ( "-h".equals( arg ) || "--help".equals( arg ) ) {
 				usage( 0 );
+				argIdx = argIdx - 1;
 			} else {
-				System.err.println( nextArg+" Unknown parameter '" + arg + "'" );
+				System.err.println( nextArg + " Unknown parameter '" + arg + "'" );
 				usage( 1 );
 			}
 		}

@@ -51,7 +51,7 @@ public class SmilesLoader {
 	* @return  map with OCID as key, SMILES as value
 	 * @throws Exception 
 	*/
-	public static Map<String,String> readSmiles( String _fileName ) throws Exception {
+	public static Map<String,String> readSmiles( String _fileName, int _max ) throws Exception {
 		
 		LOG.info( "reading compounds: " + _fileName );
 		final Map<String,String> targetMap = new HashMap<>();
@@ -68,9 +68,10 @@ public class SmilesLoader {
 			
 			while ( ( inLine = inCsv.readLine() ) != null ) {
 				if ( inLine.startsWith( "#" ) ) continue;
+				count++;
+				if ( count > _max ) continue;
 				String[] splitLine = inLine.split( "\t" );
 				if ( splitLine.length < 2 ) continue;
-				count++;
 				String smiles = splitLine[0];
 				String ocid   = splitLine[1];
 				try {
@@ -81,7 +82,7 @@ public class SmilesLoader {
 				}
 			}
 			LOG.info( "...read smiles: " + count );
-		} catch (Exception er) {
+		} catch ( Exception er ) {
 			LOG.info( "ERROR: " + er.getLocalizedMessage() );
 		}
 		return targetMap;
