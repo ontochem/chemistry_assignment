@@ -83,8 +83,9 @@ public class OntologyLoader {
 		
 		final OntologyData ontData = new OntologyData();
 
-		final boolean isModuleCdkOrAmbit = ChemLib.CHEMLIB_CDK.equals( _module ) || ChemLib.CHEMLIB_AMBIT.equals( _module );
-		final boolean isModuleCA         = ChemLib.CHEMLIB_CA.equals( _module );
+		final boolean isModuleCdkOrAmbit = ChemLib.CHEMLIB_CDK.equals( _module.toLowerCase() ) 
+				|| ChemLib.CHEMLIB_AMBIT.equals( _module.toLowerCase() );
+		final boolean isModuleCA         = ChemLib.CHEMLIB_CA.equals( _module.toLowerCase() );
 		
 		
 		try ( BufferedReader inObo = new BufferedReader( 
@@ -128,18 +129,43 @@ public class OntologyLoader {
 				        else if ( "name".equals( tag ) ) 	name = value;
 					    else if ( "is_a".equals( tag ) ) 	parentSet.add( value ); 
 				        else if ( "has_a".equals( tag ) ) 	childSet.add( value );
+				        
 				        else if ( tag.endsWith( "smarts" ) ) {
-				        	String smarts = value.replace("\\!","!").replace("\\\\","\\");
-				        	if ( ( isModuleCdkOrAmbit && "cdk_smarts".equals( tag ) && !_aromatic ) ) smartsList.add( smarts );
-				        	else if ( isModuleCdkOrAmbit && "cdk_aromsmarts".equals( tag ) && _aromatic ) smartsList.add( smarts );
-				        	else if ( isModuleCA && "oc_smarts".equals( tag ) ) smartsList.add( smarts );
+				        	String smarts = null;
+    						if ( isModuleCdkOrAmbit ) {
+    							if ( _aromatic ) {
+    								if ( inConceptLine.startsWith("cdk_aromsmarts: ") ) {
+    									smarts = inConceptLine.substring(16);
+    									//System.out.println( "smarts: "+ smarts);
+    								}
+    							} else {
+    								if ( inConceptLine.startsWith("cdk_smarts: ") ) {
+    									smarts = inConceptLine.substring(12);
+    									//System.out.println( "smarts: "+ smarts);
+    								}
+    							}
+    						}
+    						if ( isModuleCA && inConceptLine.startsWith("oc_smarts: ") ) {
+    							smarts = inConceptLine.substring(11);
+    							if ( smarts.contains("EXACT") || smarts.contains("MORE") ) smarts = null;
+    						}
+    						if ( smarts != null ) {
+	    						if ( smarts.contains(" ! ")) {
+	    							int startS = smarts.indexOf(" ! ");
+	    							smarts = smarts.substring(0,startS);
+	    						}
+	    						smarts = smarts.replace("\\!","!");
+	    						smarts = smarts.replace("\\\\","\\");
+	    						//System.out.println( smarts );
+	    						smartsList.add( smarts );
+    						}
 				        }
 	  				}
 			      
 	  				if ( id != null ) {
 			            if ( obsolete ) continue;
 			  		    if ( name != null ) ontData.setOcidName( id, name );
-			  		    if ( !childSet.isEmpty() ) ontData.setOcidChildren( id, childSet );
+			  		    if ( childSet != null ) ontData.setOcidChildren( id, childSet );
 			  		    ontData.setOcidParents( id, parentSet );
 			  		    ontData.setOcidSmarts( id, smartsList );
 			            obsolete = false;

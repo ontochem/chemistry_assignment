@@ -39,13 +39,15 @@ import com.ontochem.assignment.OntologyLoader.OntologyData;
 
 /**
  * Compound assignment to chemical structure classes in a ontology
- * version 1.05
+ * version 1.06
  *
  * <h3>Changelog</h3>
  * <ul>
- *   <li>2022-09-03
+ *   <li>2022-10-23
  *     <ul>
- *       <li>fifth version</li>
+ *       <li>sixth version</li>
+ *       <li>includes stereochemistry assignement via CDK</li>
+ *       <li>includes smarts assignement via Ambit</li>
  *     </ul>
  *   </li>
  * </ul>
@@ -61,16 +63,16 @@ public class AssignCompounds {
 	 * Container for assignment parameters.
 	 */
 	public static class AssignmentParameters {
-    
-	    private String  ontologyFilename;
-	    /** lower case name of chemical library used, e.g. ambit, cdk, chemaxon,
+		
+		/** lower case name of chemical library used, e.g. ambit, cdk, chemaxon,
 	     *  see {@link ChemLib} */
 	    private String  module;
+	    private String  ontologyFilename;
 	    private String  smilesFilename;
 	    private String  outFilename;
 	    private String  statisticsFilename;
 	    private int     nThreads = 1;
-	    private int 	max = 1;
+	    private int 	max = 1;    //maximum number of evaluated smiles, for testing
 	    private boolean appendModuleInfoToFilename = false;
 	    private boolean writeToStandardOut = false;
 	    private boolean writeLeavesOnly = true;
@@ -185,32 +187,33 @@ public class AssignCompounds {
 		
 		long startTime = System.nanoTime();
 		boolean aromatic = true;
+		boolean verbose = false;
 
 	    /*
 	     * step 1: read chemistry ontology with smarts
 	     */
 	    OntologyData ontData = OntologyLoader.readObo( _parameters.getOntologyFilename(), _parameters.getModule(), aromatic );
-	    final Map<String,Set<String>>  ocidClass2ChildMap   		= ontData.getOcidChildMap();
-	    final Map<String,Set<String>>  ocidClass2ParentMap  		= ontData.getOcidParentMap();
-	    final Map<String,List<String>> ocidClass2SmartsList 		= ontData.getOcidSmartsMap();
-	    final Map<String,String>       ocidClass2NameMap  			= ontData.getOcidNameMap();
-	    final Map<String,Set<String>>  ocidClass2AllOffspringsMap 	= new HashMap<String,Set<String>>();
+	    final Map<String,Set<String>>  ocidClass2childMap   		= ontData.getOcidChildMap();
+	    final Map<String,Set<String>>  ocidClass2parentMap  		= ontData.getOcidParentMap();
+	    final Map<String,List<String>> ocidClass2smartsList			= ontData.getOcidSmartsMap();
+	    final Map<String,String>       ocidClass2nameMap  			= ontData.getOcidNameMap();
+	    final Map<String,Set<String>>  ocidClass2offspringsMap 	    = new HashMap<String,Set<String>>();
 	    final Map<String,Set<String>>  ocid2ancestorsMap 			= new HashMap<String,Set<String>>();
 	    
-	    if ( ocidClass2ChildMap.size() == 0 ){
-			LOG.info("generating ocidClass2ChildMap as the has_a relationship was not found in the OBO ...");
+	    if ( ocidClass2childMap.size() == 0 ) {
+			LOG.info("generating ocidClass2childMap as has_a relationship was not found in the OBO ...");
 			List<String> idList1 = new ArrayList<>();
-	   		ocidClass2ParentMap.forEach( ( key, value )->{ idList1.addAll( value ); } );
+	   		ocidClass2parentMap.forEach( ( key, value )->{ idList1.addAll( value ); } );
 			for ( String id : idList1 ) {
 				List<String> list1 = new ArrayList<>();
-				Iterator<String> itre = ocidClass2ParentMap.keySet().iterator();
+				Iterator<String> itre = ocidClass2parentMap.keySet().iterator();
 				while ( itre.hasNext() ) {
 					String key = itre.next();
-					Set<String> parents = ocidClass2ParentMap.get(key);
+					Set<String> parents = ocidClass2parentMap.get(key);
 					if( parents.contains( id ) ) list1.add( key );
 				}
 				HashSet<String> hsList1 = new HashSet<String>( list1 );
-				ocidClass2ChildMap.put( id, hsList1 );
+				ocidClass2childMap.put( id, hsList1 );
 			}
 		}
 	    
@@ -219,8 +222,8 @@ public class AssignCompounds {
 		 */
 	   	String rootId = null;
 	    int countRoots = 0;
-	    for ( String ocid : ocidClass2ParentMap.keySet() ) {
-	    	if ( ocidClass2ParentMap.get( ocid ).isEmpty() ) {
+	    for ( String ocid : ocidClass2parentMap.keySet() ) {
+	    	if ( ocidClass2parentMap.get( ocid ).isEmpty() ) {
 	    		rootId = ocid;
 	    		countRoots++;
 	    	}
@@ -234,33 +237,33 @@ public class AssignCompounds {
 	    /*
 	     * step 3: read and load smiles
 	     */
-	    final Map<String,String> toProcessOcid2SmilesMap = SmilesLoader.readSmiles( _parameters.getSmilesFilename(), _parameters.getMax() );
+	    final Map<String,String> toProcessOcid2SmilesMap = SmilesLoader.readSmiles( _parameters.getSmilesFilename(), _parameters.getMax(), verbose );
 	    final List<String>       toProcessOcidList       = new ArrayList<String>( toProcessOcid2SmilesMap.keySet() );
 	    
 	    /*
 	     * step 4: calculate ancestorMap and offspringMap
 	     */
 	    final Map<String,Set<String>>  ocidClass2AllAncestorsMap  = new HashMap<String, Set<String>>();
-	    for ( String ocidClass : ocidClass2NameMap.keySet() ) {
-	    	Set<String> ancestorSet = ancestors( ocidClass, ocidClass2ParentMap );
+	    for ( String ocidClass : ocidClass2nameMap.keySet() ) {
+	    	Set<String> ancestorSet = ancestors( ocidClass, ocidClass2parentMap );
 	    	ocidClass2AllAncestorsMap.put( ocidClass, ancestorSet );
 	    }
-	    for ( String ocidClass : ocidClass2NameMap.keySet() ) {
-	    	Set<String> offspringSet = offsprings( ocidClass, ocidClass2ChildMap );
-	    	ocidClass2AllOffspringsMap.put( ocidClass, offsprings( ocidClass, ocidClass2ChildMap ) );
+	    for ( String ocidClass : ocidClass2nameMap.keySet() ) {
+	    	Set<String> offspringSet = offsprings( ocidClass, ocidClass2childMap );
+	    	ocidClass2offspringsMap.put( ocidClass, offsprings( ocidClass, ocidClass2childMap ) );
 	    }
 	    
 	    /* 
 	     * step 5: follow hierarchy of class id top down and check assignment, write into ocidAssignmentMap
 	     */
 	    final Map<String,Set<String>> ocidAssignmentMap = 
-	    		AssignmentUtils.hierarchicalParallelClassAssignment( rootId, _parameters.getModule(), aromatic,
+	    		AssignmentUtils.hierarchicalParallelClassAssignment( rootId, _parameters.getModule(), aromatic, verbose,
                                                               		 _parameters.getnThreads(), 
                                                               		 toProcessOcidList, 
                                                               		 toProcessOcid2SmilesMap, 
-                                                              		 ocidClass2SmartsList, 
-                                                              		 ocidClass2ParentMap,
-                                                              		 ocidClass2ChildMap 	);
+                                                              		 ocidClass2smartsList, 
+                                                              		 ocidClass2parentMap,
+                                                              		 ocidClass2childMap 	);
 
 	    String outfile = _parameters.getOutFilename();
 	    if ( _parameters.isAppendModuleInfoToFilename() ) outfile = outfile + "_" + _parameters.getModule()+".tsv";
@@ -287,11 +290,11 @@ public class AssignCompounds {
 		        	final Set<String> classAllAncestorsSet = ocidClass2AllAncestorsMap.get( ocidClass );
   
 		        	// leave out if a concept has no parents
-		        	if ( ocidClass2ParentMap.get( ocidClass ).isEmpty() ) continue;
+		        	if ( ocidClass2parentMap.get( ocidClass ).isEmpty() ) continue;
   
 		        	// leave out if a ancestor concept is missing
 		        	//final boolean missingParent = classAllAncestorsSet.stream()
-                     //                         .anyMatch( ancestor -> ! ocidClassSet.contains( ancestor ) );
+                    //                         .anyMatch( ancestor -> ! ocidClassSet.contains( ancestor ) );
 		        	boolean missingParent = false;
 					for ( String ancestor : classAllAncestorsSet ) {
 						if ( !ocidClassSet.contains( ancestor ) ) {
@@ -301,7 +304,7 @@ public class AssignCompounds {
 						}
 	    			}
 					
-		        	if ( missingParent || ( ocidClass2SmartsList.get( ocidClass ).isEmpty() ) ) {
+		        	if ( missingParent || ( ocidClass2smartsList.get( ocidClass ).isEmpty() ) ) {
 		        		continue;
 		        	} else {
 		        		ocidClassSet1.add( ocidClass );
@@ -312,12 +315,12 @@ public class AssignCompounds {
 		        for ( String ocidClass : ocidClassSet1 ) {
 		        	//System.out.println( ocid + " assigned to 1: "+ocidClass );
 		        	boolean validChild = false;
-		        	final Set<String> classAllOffspringsSet = ocidClass2AllOffspringsMap.get( ocidClass );
+		        	final Set<String> classAllOffspringsSet = ocidClass2offspringsMap.get( ocidClass );
 		  
 		        	// leave out if offspring with smarts is present, one is enough
 		        	if ( classAllOffspringsSet != null ) {
 		        		for ( String offspring : classAllOffspringsSet ) {
-		        			if ( ocidClassSet1.contains( offspring ) && ocidClass2SmartsList.containsKey( offspring ) ) {
+		        			if ( ocidClassSet1.contains( offspring ) && ocidClass2smartsList.containsKey( offspring ) ) {
 		        				validChild = true;
 		        				break;
 		        			}
@@ -331,7 +334,7 @@ public class AssignCompounds {
 		        }
 		        
 		        if ( _parameters.isWriteToStandardOut() ) {
-		        	System.out.println( ocid + "\t" + toProcessOcid2SmilesMap.get( ocid ) );
+		        	System.out.print( toProcessOcid2SmilesMap.get( ocid )+ "\t" + ocid );
 		        }
 		        
 		        out.append( ocid + "\t" + toProcessOcid2SmilesMap.get( ocid ) +"\n");
@@ -339,24 +342,27 @@ public class AssignCompounds {
 		        if ( _parameters.isWriteLeavesOnly() ) {
 			        for ( String newClass : ocidClassSet2 ) {
 			        	out.append( "is_a\t" ).append( newClass ).append( "\t" )
-	                            .append( ocidClass2NameMap.get( newClass ) ).append( "\n" );
+	                            .append( ocidClass2nameMap.get( newClass ) ).append( "\n" );
 			        	out.flush();
 			        	if ( _parameters.isWriteToStandardOut() ) {
-			        		System.out.println( ocid + "\t" + newClass + "\t" + ocidClass2NameMap.get( newClass ) );
+			        		System.out.print( "\t" + newClass + "\t" + ocidClass2nameMap.get( newClass ) );
 			        	}
 			        }
+			        if ( _parameters.isWriteToStandardOut() ) System.out.print( "\n" );
+		        	
 		        } else {
 		        	for ( String newClass : ocidClassSet1 ) {
 			        	out.append( "is_a\t" ).append( newClass ).append( "\t" )
-	                            .append( ocidClass2NameMap.get( newClass ) ).append( "\n" );
+	                            .append( ocidClass2nameMap.get( newClass ) ).append( "\n" );
 			        	out.flush();
 			        	if ( _parameters.isWriteToStandardOut() ) {
-			        		System.out.println( ocid + "\t" + newClass + "\t" + ocidClass2NameMap.get( newClass ) );
+			        		System.out.print( "\t" + newClass + "\t" + ocidClass2nameMap.get( newClass ) );
 			        	}
 			        }
 		        }
 		        System.out.println();
 		        out.write( "\n" );
+		        System.out.print("\n" );
 		        ocid2ancestorsMap.put( ocid, ocidClassSet1 );
 		        ocidClassSet1 = new HashSet<String>();
 		        ocidClassSet2 = new HashSet<String>();
@@ -381,9 +387,8 @@ public class AssignCompounds {
                     new BufferedOutputStream(
                       new FileOutputStream( new File( _parameters.getStatisticsFilename() ) ) 
                     ), StandardCharsets.UTF_8 ); ) {
-		    		
 			    		for ( String classId : statisticsMap.keySet() ) {
-				        	outStat.append( classId ).append( "\t" ).append( ocidClass2NameMap.get( classId )+"\t").append( String.valueOf( statisticsMap.get( classId ) )).append( "\n" );
+				        	outStat.append( classId ).append( "\t" ).append( ocidClass2nameMap.get( classId )+"\t").append( String.valueOf( statisticsMap.get( classId ) )).append( "\n" );
 				        }
 		    	}
 	    	

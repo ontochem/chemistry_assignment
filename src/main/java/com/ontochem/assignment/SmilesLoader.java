@@ -51,7 +51,7 @@ public class SmilesLoader {
 	* @return  map with OCID as key, SMILES as value
 	 * @throws Exception 
 	*/
-	public static Map<String,String> readSmiles( String _fileName, int _max ) throws Exception {
+	public static Map<String,String> readSmiles( String _fileName, int _max, boolean _verbose ) throws Exception {
 		
 		LOG.info( "reading compounds: " + _fileName );
 		final Map<String,String> targetMap = new HashMap<>();
@@ -76,6 +76,7 @@ public class SmilesLoader {
 				String ocid   = splitLine[1];
 				try {
 					String normSmiles = normalizeSmilesCDK( smiles, _smilesG, _smilesP, _arom );
+					if ( _verbose ) System.out.println ( normSmiles );
 					targetMap.put( ocid, normSmiles  );
 				} catch (Exception e) {
 					// TODO: handle exception

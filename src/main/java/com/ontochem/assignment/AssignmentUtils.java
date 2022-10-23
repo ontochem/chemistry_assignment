@@ -37,7 +37,7 @@ public class AssignmentUtils {
 	 * @param rootClassId
 	 * @param _module
 	 * @param _nThreads
-	 * @param _ocidSetIn
+	 * @param _ocidListIn
 	 * @param _ocid2smilesMap
 	 * @param _ocidClass2smartsList
 	 * @param _ocidClass2parentMap
@@ -48,26 +48,29 @@ public class AssignmentUtils {
 	 * @throws IOException
 	 */
 	public final static Map<String,Set<String>> 
-	hierarchicalParallelClassAssignment( String rootClassId, String _module, boolean _aromatic, int _nThreads, 
-                                       List<String> _ocidSetIn, 
-                                       Map<String,String> _ocid2smilesMap, 
-                                       Map<String,List<String>> _ocidClass2smartsList, 
-                                       Map<String,Set<String>> _ocidClass2parentMap,
-                                       Map<String,Set<String>> _ocidClass2childMap ) throws IOException {
+	hierarchicalParallelClassAssignment( String rootClassId, String _module, boolean _aromatic, boolean _verbose,
+											int _nThreads, 
+											List<String> _ocidListIn, 
+											Map<String,String> _ocid2smilesMap, 
+											Map<String,List<String>> _ocidClass2smartsList, 
+											Map<String,Set<String>> _ocidClass2parentMap,
+											Map<String,Set<String>> _ocidClass2childMap ) throws IOException {
     	
-		final Map<String,Set<String>> ocidClass2CompoundMap = new ConcurrentHashMap<>();
-		final ForkJoinPool            forkJoinPool          = new ForkJoinPool( _nThreads );
+		final Map<String,Set<String>> ocid2classMap = new ConcurrentHashMap<>();
+		final ForkJoinPool            forkJoinPool  = new ForkJoinPool( _nThreads );
     	
 		try {
+			
 			forkJoinPool.submit( () -> {
 			  
-				_ocidSetIn.parallelStream().forEach( ocid -> {
+				_ocidListIn.parallelStream().forEach( ocid -> {
 					
 					String smiles = _ocid2smilesMap.get( ocid );
-					System.out.println( ocid );
-					Set<String> classIdList 	= Collections.singleton( rootClassId );
-					Set<String> childrenList  	= new HashSet<String>();
-					Set<String> assignedList    = new HashSet<>();
+					Set<String> classIdList = new HashSet();
+					classIdList.add( rootClassId );
+					
+					Set<String> childrenSet = new HashSet<String>();
+					Set<String> assignedSet = new HashSet<>();
 					
 					int count    = 0;
 					int countAss = 0;
@@ -79,38 +82,40 @@ public class AssignmentUtils {
 						
 						for ( String classId : classIdList ) {
 							
-							if ( assignedList.contains( classId ) ) continue;
+							if ( assignedSet.contains( classId ) ) continue;
 							
 							boolean parentNotAssigned = false;
 							Set<String> classParents = _ocidClass2parentMap.get( classId );
-							for ( String parent : classParents ) {
-								if ( parentNotAssigned ) break;
-								if ( !assignedList.contains( parent ) ) parentNotAssigned = true;
+							if ( classParents != null ) {
+								for ( String parent : classParents ) {
+									if ( parentNotAssigned ) break;
+									if ( !assignedSet.contains( parent ) ) parentNotAssigned = true;
+								}
 							}
-							
 							if ( parentNotAssigned ) continue;
-							List<String> smartsList = _ocidClass2smartsList.get( classId );
 							
+							List<String> smartsList = _ocidClass2smartsList.get( classId );
 							if ( ( smartsList != null ) && !smartsList.isEmpty() ) {
 								count++;
-								if ( assign( smiles, smartsList, _module, _aromatic ) ) {
+								if ( assign( smiles, smartsList, _module, _aromatic, _verbose ) ) {
 									countAss++;
-									assignedList.add( classId );
+									assignedSet.add( classId );
 									countAll++;
 								} 
 							} else {
-								if ( !_ocidClass2childMap.isEmpty() ) assignedList.add( classId );
+								if ( !_ocidClass2childMap.isEmpty() ) assignedSet.add( classId );
 								countAll++;
 							}
 							
-							childrenList = _ocidClass2childMap.get( classId );
-							if ( ( childrenList != null ) && !childrenList.isEmpty() ){
-								newIdList.addAll( childrenList );
+							childrenSet = _ocidClass2childMap.get( classId );
+							if ( ( childrenSet != null ) && !childrenSet.isEmpty() ){
+								newIdList.addAll( childrenSet );
 							}
 						}
 						classIdList = newIdList;
 					}
-					ocidClass2CompoundMap.put( ocid, assignedList );
+					ocid2classMap.put( ocid, assignedSet );
+					if ( _verbose ) System.out.println( ocid + " " + assignedSet.size() );
 				});
 			}).get();
 			
@@ -120,7 +125,7 @@ public class AssignmentUtils {
 			throw new IOException( "Error in parallel hierarchical class assignment: " + e.getMessage(), e );
 		}
 		
-		return ocidClass2CompoundMap;
+		return ocid2classMap;
   }
     
 	/**
@@ -131,7 +136,8 @@ public class AssignmentUtils {
 	 * 
 	 * @return
 	 */
-	public static boolean assign( String _smiles, List<String> _smartsList, String _module, boolean _aromatic ) {
+	public static boolean assign( String _smiles, List<String> _smartsList, String _module, 
+															boolean _aromatic, boolean _verbose ) {
 		  
 		if ( ChemLib.CHEMLIB_CA.equals( _module ) ) {
 			LOG.info("ChemAxon is not implemented in public version...stopping");
@@ -141,7 +147,7 @@ public class AssignmentUtils {
 		} else if ( ChemLib.CHEMLIB_CDK.equals( _module ) || 
 		            ChemLib.CHEMLIB_AMBIT.equals( _module ) ) {
 		  
-			return assignCdkOrAmbit( _smiles, _smartsList, _module, _aromatic );
+			return assignCdkOrAmbit( _smiles, _smartsList, _module, _aromatic, _verbose );
 		  
 		} else {
 			LOG.severe( "Unexpected chemical library module: '" + _module + "'" );
@@ -152,7 +158,8 @@ public class AssignmentUtils {
 	/**
 	 * handle logical operators in smarts and uses atom by atom search (ABAS) to assign a compound. 
 	 */
-	public static boolean assignCdkOrAmbit( String _smiles, List<String> smartsList, String module, boolean aromatic ) {
+	public static boolean assignCdkOrAmbit( String _smiles, List<String> _smartsList, String _module, 
+																boolean _aromatic, boolean _verbose ) {
 		try {
 			List<String> ORResponse = new ArrayList<String>();
 			List<String> NOTResponse = new ArrayList<String>();
@@ -160,7 +167,7 @@ public class AssignmentUtils {
 			boolean isORstructure 	= false;
 			boolean isNOTstructure 	= false;
 			String  trueResponse 	= new String( "true" );
-			int size = smartsList.size();
+			int size = _smartsList.size();
 		
 			/*
 			 * A class consists of smarts set.
@@ -172,117 +179,117 @@ public class AssignmentUtils {
 			 * NOT structures: !query, !query1XXXquery2, !query1.query2
 			 * OR structures: queries without NOT symol, and AND structures after resolving XXX, WWW, dots.
 			 */
-			for ( int i=0; i < smartsList.size(); i++ ) {
+			for ( int i=0; i < _smartsList.size(); i++ ) {
 				
-				String Qry = smartsList.get( i );
+				String Qry = _smartsList.get( i );
 				String Qry2 = Qry.replaceAll( "^!", "" );
 				
-	    		if ( Qry2.equals( Qry ) ) {
+	    		if ( Qry2.equals( Qry ) ) {								//OR smarts
+	    			isORstructure = true;
 	    			
-	    			//OR and AND structures. 
 	    			String Qry1 = Qry.replaceAll("XXX", "");
 	    			
-	    			if( Qry1.equals( Qry ) ) {
+	    			if ( Qry1.equals( Qry ) ) {							//OR smarts
 	    				
 	    				String Qry3 = Qry.replace(".", "");
 		    			
-	    				if ( Qry3.equals( Qry ) ) {
-		    				//no patterns found, OR structure
-			    			int rspd = checkQueryMultiplicity( _smiles, Qry, module, aromatic );
-			    			if ( rspd >0 ) ORResponse.add( "true" );
-		    				else ORResponse.add("false");
-		    				isORstructure = true;
-			    			//System.out.println("checkQueryMultiplicity: " + " OR " + rspd + " " + Qry);
-		    			} else {
-		    				//dot patterns found, AND structure
+	    				if ( Qry3.equals( Qry ) ) {						//OR smarts, potential EXACT and MORE
+			    			int rspd = checkQueryMultiplicity( _smiles, Qry, _module, _aromatic, _verbose );
+			    			if ( rspd >0 ) ORResponse.add( "true" ); else ORResponse.add("false");
+		    				//System.out.println("checkQueryMultiplicity: " + " OR " + rspd + " " + Qry);
+			    			
+	    				} else {										//OR + ANDdot smarts, potential EXACT and MORE										
  		    				List<String> newQryList = Segmenter( Qry, "." );
 		    				List<String> AndConnectedList = new ArrayList<String>();
 		    				for ( int j = 0; j<newQryList.size(); j++) { 
 		    					String newQry = newQryList.get(j);
-		    					int rspd = SubStructureSearchEngine( _smiles, newQry, module, aromatic );
+		    					int rspd = SubStructureSearchEngine( _smiles, newQry, _module, _aromatic, _verbose );
 		    					//System.out.println("sss: " + rspd + " " + newQry);
-		    					if ( rspd >0 ) AndConnectedList.add("true");
-			    				else AndConnectedList.add("false");
+		    					if ( rspd >0 ) AndConnectedList.add("true"); else AndConnectedList.add("false");
 		    				}
 		    				if ( IsAndConnected( AndConnectedList ) ) { 
-		    					String rspdS = AndConnectedList.get(0);
+		    					String rspdS = AndConnectedList.get( 0 );
 		    					ORResponse.add( rspdS );
-		    					isORstructure = true;
 		    					//System.out.println("AND with dots " + rspd + " " + Qry);
 		    				}
 		    			}
-	    			} else {
-		    			//XXX patterns found, AND structure
-	    				List<String> newQryList = Segmenter( Qry, "XXX" );
+	    				
+		    		} else {											//OR + AND smarts
+		    			List<String> newQryList = Segmenter( Qry, "XXX" );
 	    				List<String> AndConnectedList= new ArrayList<String>();
-	    				for ( int j = 0; j < newQryList.size(); j++ ) {
-	    					String newQry = newQryList.get(j);
-	    					int rspd = SubStructureSearchEngine( _smiles, newQry, module, aromatic );
-	    					//System.out.println("sss: " + rspd + " " + newQry);
-	    					if ( rspd >0 ) AndConnectedList.add("true");
-	    					else AndConnectedList.add("false");
-	    				}
-	    				if ( IsAndConnected(AndConnectedList) ) { 
-	    					String rspdS = AndConnectedList.get(0);
+	    				
+	    				String newQry = newQryList.get(0);				//stereospecific query preceeds before XXX
+	    				int rspd = checkQueryStereoSpecificity( _smiles, newQry, _module, _aromatic, _verbose );
+	    				if ( rspd >0 ) AndConnectedList.add( "true" ); else AndConnectedList.add( "false" );
+	    				//System.out.println("stereo: " + rspd + " " + newQry );
+	    				
+	    				newQry = newQryList.get( 1 );					//non-stereospecific query follows after XXX
+	    				////rspd = SubStructureSearchEngine( _smiles, newQry, _module, _aromatic, _verbose );
+	    				rspd = checkQueryMultiplicity( _smiles, newQry, _module, _aromatic, _verbose );
+	    				if ( rspd >0 ) AndConnectedList.add( "true" ); else AndConnectedList.add( "false" );
+	    				//System.out.println("sss: " + rspd + " " + newQry );
+	    				
+	    				if ( IsAndConnected( AndConnectedList ) ) { 
+	    					String rspdS = AndConnectedList.get(0);		//only true if both part1 and part2 are true
 	    					ORResponse.add( rspdS );
-	    					isORstructure = true;
 	    					//System.out.println("AND with XXX " + rspd + " " + Qry);
 	    				}
 	    			}
-	    		} else {
 	    			
-	    			//OR and AND structures preceeded by NOT
+	    		} else {												//NOT smarts
+	    			
+	    			isNOTstructure = true;
+	    			
 	    			String Qry1 = Qry2.replaceAll("XXX", "");
 	    			
-	    			if( Qry1.equals( Qry2 ) ) {
+	    			if( Qry1.equals( Qry2 ) ) {							//NOT smarts
 	    				
 	    				String Qry3 = Qry2.replace(".", "");
 		    			
-	    				if( Qry3.equals( Qry2 ) ) {
+	    				if( Qry3.equals( Qry2 ) ) {						//NOT as simple smarts
 	    					
 		    				// no patterns found, OR structure preceeded by NOT
-		    				int rspd1 = checkQueryMultiplicity( _smiles, Qry2, module, aromatic);
+		    				int rspd1 = checkQueryMultiplicity( _smiles, Qry2, _module, _aromatic, _verbose );
 		    				if ( rspd1 >0 ) NOTResponse.add("false");
 	    					else NOTResponse.add("true");
-			    			isNOTstructure = true;
 			    			
-		    			} else {
+		    			} else {										//NOT+AND smarts
 		    				
-		    				//dot patterns found, AND structure preceeded by NOT
  		    				List<String> newQryList = Segmenter( Qry2,"." );
 		    				List<String> AndConnectedList= new ArrayList<String>();
 		    				
 		    				for (int j = 0; j<newQryList.size(); j++) {
 		    					String newQry = newQryList.get(j);
-		    					int rspd = SubStructureSearchEngine( _smiles, newQry, module, aromatic );
+		    					int rspd = SubStructureSearchEngine( _smiles, newQry, _module, _aromatic, _verbose );
 		    					//System.out.println("sss: " + rspd + " " + newQry);
 		    					if ( rspd >0 ) AndConnectedList.add("true");
 		    					else AndConnectedList.add("false");
 		    				}
 		    				if ( IsAndConnected( AndConnectedList ) ) { 
 		    					String rspd1 = AndConnectedList.get(0);
-		    					if( rspd1.equals("true") ) NOTResponse.add("false");
-			                    else NOTResponse.add("true");
-		    					isNOTstructure = true;
+		    					if( rspd1.equals("true") ) NOTResponse.add("false"); else NOTResponse.add("true");
 		    				}
 		    			}
-	    			} else {
 	    				
-		    			//XXX patterns found, AND structure preceeded by NOT
+	    			} else { 											//NOT + AND smarts
 	    				List<String> newQryList = Segmenter( Qry2, "XXX" );
 	    				List<String> AndConnectedList= new ArrayList<String>();
 	    				
 	    				for ( int j = 0; j<newQryList.size(); j++ ) {
 	    					String newQry = newQryList.get(j);
-	    					int rspd = SubStructureSearchEngine( _smiles, newQry, module, aromatic );
-	    					if ( rspd >0 ) AndConnectedList.add( "true" );
-	    					else AndConnectedList.add( "false" );
+	    					int rspd = 0;
+	    					if ( j==0 ) {
+		    					//stereospecific query preceeds before XXX
+	    						rspd = checkQueryStereoSpecificity( _smiles, newQry, _module, _aromatic, _verbose );
+	    					} else {
+		    					//non-stereospecific query follows after XXX
+	    						rspd = SubStructureSearchEngine( _smiles, newQry, _module, _aromatic, _verbose );
+	    					}
+	    					if ( rspd >0 ) AndConnectedList.add( "true" ); else AndConnectedList.add( "false" );
 	    				}
 	    				if ( IsAndConnected(AndConnectedList ) ) { 
 	    					String rspd1 = AndConnectedList.get(0);
-	    					if ( rspd1.equals( "true" ) ) NOTResponse.add( "false" );
-		             	    else NOTResponse.add( "true" );
-	    					isNOTstructure = true;
+	    					if ( rspd1.equals( "true" ) ) NOTResponse.add( "false" ); else NOTResponse.add( "true" );
 	    				}
 	    			}
 	    		}
@@ -334,6 +341,18 @@ public class AssignmentUtils {
 		}
 		return false;
 	}
+		
+	/**
+	 * @param smi
+	 * @param sma
+	 * @param module
+	 * @return true or false. 
+	 */     
+    public static int checkQueryStereoSpecificity( String _smi, String _sma, String _module, 
+    															boolean _aromatic, boolean _verbose ) {
+    	// stereochemistry is implemented in cdk and not in ambit
+    	return SubStructureSearchEngine( _smi, _sma, "cdk", _aromatic, _verbose );
+    }
 
 	/**
 	 * Handle logical operators in a smarts class and uses atom by atom search (ABAS) to assign a compound.
@@ -344,7 +363,8 @@ public class AssignmentUtils {
 	 * 
 	 * @return
 	 */
-	public static boolean assignChemaxon( String _smiles, List<String> smartsList, String module, boolean aromatic ) {
+	public static boolean assignChemaxon( String _smiles, List<String> _smartsList, String _module, 
+																boolean _aromatic, boolean _verbose ) {
 		try {
 			List<String> ORResponse = new ArrayList<String>();
 			List<String> NOTResponse = new ArrayList<String>();
@@ -352,7 +372,7 @@ public class AssignmentUtils {
 			boolean isORstructure = false;
 			boolean isNOTstructure = false;
 			String trueResponse = new String( "true" );
-			int size = smartsList.size();
+			int size = _smartsList.size();
 		
 			/*
 			 * A class consists of smarts set.
@@ -364,9 +384,9 @@ public class AssignmentUtils {
 			 * NOT structures: !query, !query1XXXquery2, !query1.query2
 			 * OR structures: queries without NOT symol, and AND structures after resolving XXX, WWW, dots.
 			 */
-			for ( int i=0; i < smartsList.size(); i++ ) {
+			for ( int i=0; i < _smartsList.size(); i++ ) {
 				
-				String Qry = smartsList.get(i);
+				String Qry = _smartsList.get(i);
 				String Qry2 = Qry.replaceAll( "^!", "" );
 				
 	    		if ( Qry2.equals(Qry) ) {
@@ -380,7 +400,7 @@ public class AssignmentUtils {
 	    				/*
 	    				 * no patterns found, OR structure
 	    				 */
-		    			int rspd = SubStructureSearchEngine( _smiles, Qry, module, aromatic );
+		    			int rspd = SubStructureSearchEngine( _smiles, Qry, _module, _aromatic, _verbose );
 		    			if ( rspd >0 ) ORResponse.add( "true" );
 	    				else ORResponse.add( "false" );
 	    				isORstructure = true;
@@ -394,7 +414,7 @@ public class AssignmentUtils {
 	    				List<String> AndConnectedList= new ArrayList<String>();
 	    				for ( int j = 0; j < newQryList.size(); j++ ) {
 	    					String newQry = newQryList.get(j);
-	    					int rspd = SubStructureSearchEngine( _smiles, newQry, module, aromatic );
+	    					int rspd = SubStructureSearchEngine( _smiles, newQry, _module, _aromatic, _verbose );
 	    					//System.out.println("sss: " + rspd + " " + newQry);
 	    					if ( rspd >0 ) AndConnectedList.add("true");
 	    					else AndConnectedList.add("false");
@@ -416,7 +436,7 @@ public class AssignmentUtils {
 	    				/**
 	    				 * no patterns found, OR structure preceeded by NOT
 	    				 */
-	    				int rspd1 = SubStructureSearchEngine( _smiles, Qry2, module, aromatic );
+	    				int rspd1 = SubStructureSearchEngine( _smiles, Qry2, _module, _aromatic, _verbose );
 	    				if ( rspd1 >0 ) NOTResponse.add("false");
     					else NOTResponse.add("true");
 		    			isNOTstructure = true;
@@ -429,7 +449,7 @@ public class AssignmentUtils {
 	    				
 	    				for ( int j = 0; j<newQryList.size(); j++ ) {
 	    					String newQry = newQryList.get(j);
-	    					int rspd = SubStructureSearchEngine( _smiles, newQry, module, aromatic);
+	    					int rspd = SubStructureSearchEngine( _smiles, newQry, _module, _aromatic, _verbose );
 	    					if ( rspd >0 ) AndConnectedList.add("true");
 	    					else AndConnectedList.add("false");
 	    				}
@@ -447,7 +467,7 @@ public class AssignmentUtils {
 			 *  a substructure match is considered, if atleast one OR structure is a match in the smarts set
 			 * and all NOT structures in the smarts set did not match
 			 */
-			boolean asgn1 = IsOrConnected( ORResponse, "true") ;
+			boolean asgn1 = IsOrConnected( ORResponse, "true" ) ;
 			
 			/*
 			 * two scenarios in NOT structures: 1. only NOT structure 2. both NOT and OR structures
@@ -493,7 +513,7 @@ public class AssignmentUtils {
     /**
 	 * the ABAS response for each smarts in the smarts set are AND connected or not
 	 */
-	public static boolean IsAndConnected( List<String> list) {
+	public static boolean IsAndConnected( List<String> list ) {
 		try {
 		    for ( String s : list) {
 		        if ( !s.equals( list.get(0) ) )
@@ -523,7 +543,7 @@ public class AssignmentUtils {
 	 */
     public static List<String> Segmenter( String QueryWithPattern, String patternType ) {
 		try {
-			List<String> newQryList = Lists.newArrayList(Splitter.on(patternType).trimResults().omitEmptyStrings().splitToList(QueryWithPattern));
+			List<String> newQryList = Lists.newArrayList( Splitter.on( patternType ).trimResults().omitEmptyStrings().splitToList(QueryWithPattern));
 			return newQryList;
 		} catch( Exception e ) {
 			System.out.println( "error smarts segmenter: " + e );
@@ -539,32 +559,32 @@ public class AssignmentUtils {
 	 * @throws EmptyMoleculeException
 	 * @throws Exception
 	 */
-	public static int checkQueryMultiplicity( String smi, String sma, String module, boolean aromatic ) throws Exception {
+	public static int checkQueryMultiplicity( String _smi, String _sma, String _module, boolean _aromatic,  boolean _verbose ) throws Exception {
 		try  {
 			// multiplicity keywords are only used for Cdk or Ambit handling.
-			String exact = sma.replaceAll( "EXACT", "" );
-			String more = sma.replaceAll( "MORE", "" );
+			String exact = _sma.replaceAll( "EXACT", "" );
+			String more = _sma.replaceAll( "MORE", "" );
 			
-			if ( exact.equals( sma ) ) {
+			if ( exact.equals( _sma ) ) {
 				//does not contain EXACT keyword
-				if ( more.equals( sma ) ) {
+				if ( more.equals( _sma ) ) {
 					//does not contain MORE keyword
-	 				return StructureSearchEngine.searchBySubstructure( smi, sma, module, aromatic );
+	 				return StructureSearchEngine.searchBySubstructure( _smi, _sma, _module, _aromatic, _verbose );
 				} else {
 					//contains keyword MORE
-					List<String> listSmarts = Segmenter( sma, "MORE" );
+					List<String> listSmarts = Segmenter( _sma, "MORE" );
 					String query = listSmarts.get(1);
 					String threshold = listSmarts.get(0);
-					int cnt = StructureSearchEngine.searchBySubstructureAmbitAllInstances( smi, query );
+					int cnt = StructureSearchEngine.searchBySubstructureAmbitAllInstances( _smi, query, _verbose );
 					if (cnt >= Integer.parseInt( threshold ) ) return 1;
 					else  return 0;
 				}
 	 		} else {
 				//contains keyword EXACT
-				List<String> listSmarts = Segmenter( sma, "EXACT" );
+				List<String> listSmarts = Segmenter( _sma, "EXACT" );
 				String query = listSmarts.get(1);
 				String threshold = listSmarts.get(0);
-				int cnt = StructureSearchEngine.searchBySubstructureAmbitAllInstances( smi, query );
+				int cnt = StructureSearchEngine.searchBySubstructureAmbitAllInstances( _smi, query, _verbose );
 				if ( cnt == Integer.parseInt(threshold) ) return 1;
 				else return 0;
 			}
@@ -577,9 +597,10 @@ public class AssignmentUtils {
 	/**
 	 * perform atom-by-atom-search (ABAS) given a query and a target 
 	 */
-	private static int SubStructureSearchEngine( String target, String query, String module, boolean aromatic ) {
+	private static int SubStructureSearchEngine( String _target, String _query, String _module, 
+																		boolean _aromatic, boolean _verbose ) {
 		try {
-			return StructureSearchEngine.searchBySubstructure( target, query, module, aromatic ) ;
+			return StructureSearchEngine.searchBySubstructure( _target, _query, _module, _aromatic, _verbose ) ;
 		} catch (Exception e)  {
 			LOG.info( "ERROR: SubStructureSearchEngine Error "+e);
 		}
