@@ -69,15 +69,17 @@ public class SmilesLoader {
 			while ( ( inLine = inCsv.readLine() ) != null ) {
 				if ( inLine.startsWith( "#" ) ) continue;
 				count++;
-				if ( count > _max ) continue;
-				String[] splitLine = inLine.split( "\t" );
+				if ( _max != 0 ) 
+					if ( count > _max ) continue;
+				String[] splitLine = inLine.split( "," );
 				if ( splitLine.length < 2 ) continue;
 				String smiles = splitLine[0];
 				String ocid   = splitLine[1];
 				try {
-					String normSmiles = normalizeSmilesCDK( smiles, _smilesG, _smilesP, _arom );
-					if ( _verbose ) System.out.println ( normSmiles );
-					targetMap.put( ocid, normSmiles  );
+					//String normSmiles = normalizeSmilesCDK( smiles, _smilesG, _smilesP, _arom );
+					//if ( _verbose ) System.out.println ( normSmiles );
+					//targetMap.put( ocid, normSmiles  );
+					targetMap.put( ocid, smiles  );
 				} catch (Exception e) {
 					// TODO: handle exception
 				}

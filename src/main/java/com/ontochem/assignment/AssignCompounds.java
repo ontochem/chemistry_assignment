@@ -72,7 +72,9 @@ public class AssignCompounds {
 	    private String  outFilename;
 	    private String  statisticsFilename;
 	    private int     nThreads = 1;
-	    private int 	max = 1;    //maximum number of evaluated smiles, for testing
+	    private int 	max = 0;    	//maximum number of evaluated smiles in a partition, for testing
+	    private int 	startI = 1;    	
+	    private int 	endI = 1;    	
 	    private boolean appendModuleInfoToFilename = false;
 	    private boolean writeToStandardOut = false;
 	    private boolean writeLeavesOnly = true;
@@ -116,6 +118,16 @@ public class AssignCompounds {
 	    public int getMax() { return max; }
 	    public AssignmentParameters setMax( int _max ) {
 	    	max = _max; return this;
+	    }
+    
+	    public int getStart() { return startI; }
+	    public AssignmentParameters setStart( int _startI ) {
+	    	startI = _startI; return this;
+	    }
+	    
+	    public int getEnd() { return endI; }
+	    public AssignmentParameters setEnd( int _endI ) {
+	    	endI = _endI; return this;
 	    }
     
 	    public String getStatisticsFilename() { return statisticsFilename; }
@@ -225,6 +237,7 @@ public class AssignCompounds {
 	    for ( String ocid : ocidClass2parentMap.keySet() ) {
 	    	if ( ocidClass2parentMap.get( ocid ).isEmpty() ) {
 	    		rootId = ocid;
+	    		LOG.info( "root: " + rootId );
 	    		countRoots++;
 	    	}
 	    }
@@ -237,36 +250,58 @@ public class AssignCompounds {
 	    /*
 	     * step 3: read and load smiles
 	     */
-	    final Map<String,String> toProcessOcid2SmilesMap = SmilesLoader.readSmiles( _parameters.getSmilesFilename(), _parameters.getMax(), verbose );
-	    final List<String>       toProcessOcidList       = new ArrayList<String>( toProcessOcid2SmilesMap.keySet() );
+	    final Map<String,String>	toProcessOcid2SmilesMap	= SmilesLoader.readSmiles( _parameters.getSmilesFilename(), _parameters.getMax(), verbose );
+	    final List<String>			toProcessOcidList		= new ArrayList<String>(toProcessOcid2SmilesMap.keySet());
+	    List<String>				toProcessPartOcidList	= new ArrayList<String>();
+	    
+	    int startC = _parameters.getStart();
+	    int endC   = _parameters.getEnd();
+	    if ( startC > 0 ) {
+	    	LOG.info( "\tstart: " + startC+"  end: " + endC );
+	    	for ( int i=startC;i<endC+1;i++) {
+	    		String ocidS = toProcessOcidList.get(i);
+	    		toProcessPartOcidList.add( ocidS );
+	    	}
+	    } else toProcessPartOcidList = toProcessOcidList;
 	    
 	    /*
 	     * step 4: calculate ancestorMap and offspringMap
 	     */
 	    final Map<String,Set<String>>  ocidClass2AllAncestorsMap  = new HashMap<String, Set<String>>();
+	    int ocidClassC = 0; //6723 classes
 	    for ( String ocidClass : ocidClass2nameMap.keySet() ) {
 	    	Set<String> ancestorSet = ancestors( ocidClass, ocidClass2parentMap );
 	    	ocidClass2AllAncestorsMap.put( ocidClass, ancestorSet );
+	    	//LOG.info( "class: " + ocidClass + " " + ancestorSet );
 	    }
 	    for ( String ocidClass : ocidClass2nameMap.keySet() ) {
+	    	ocidClassC++;
+	    	//LOG.info( "class: "+ocidClassC+" "+ocidClass+" "+ocidClass2nameMap.get(ocidClass) );
 	    	Set<String> offspringSet = offsprings( ocidClass, ocidClass2childMap );
-	    	ocidClass2offspringsMap.put( ocidClass, offsprings( ocidClass, ocidClass2childMap ) );
+	    	ocidClass2offspringsMap.put( ocidClass, offspringSet );
+	    	//if ( offspringSet.size() > 0 ) LOG.info( ocidClassC +" "+ ocidClass + " offsprings: " + offspringSet.size() );
 	    }
-	    
+	   
 	    /* 
 	     * step 5: follow hierarchy of class id top down and check assignment, write into ocidAssignmentMap
+	     * smiles file could be partitioned by parameter 
 	     */
+	    
+	    int startI  = _parameters.getStart();
+	    int endI  = _parameters.getEnd();
+	    
+	    String outfile = _parameters.getOutFilename();
+	    if ( _parameters.isAppendModuleInfoToFilename() ) 
+	    	outfile = outfile + "_" + _parameters.getModule()+"_"+startI+"-"+endI+".tsv";
+	    
 	    final Map<String,Set<String>> ocidAssignmentMap = 
 	    		AssignmentUtils.hierarchicalParallelClassAssignment( rootId, _parameters.getModule(), aromatic, verbose,
                                                               		 _parameters.getnThreads(), 
-                                                              		 toProcessOcidList, 
+                                                              		 toProcessPartOcidList, 
                                                               		 toProcessOcid2SmilesMap, 
                                                               		 ocidClass2smartsList, 
                                                               		 ocidClass2parentMap,
                                                               		 ocidClass2childMap 	);
-
-	    String outfile = _parameters.getOutFilename();
-	    if ( _parameters.isAppendModuleInfoToFilename() ) outfile = outfile + "_" + _parameters.getModule()+".tsv";
 	    
 	    try ( Writer out = new OutputStreamWriter(
                              new BufferedOutputStream(
@@ -430,6 +465,7 @@ public class AssignCompounds {
 	}
 	
 	// ------------------------------------------------------------------------
+	
 	/**
 	 * Returns all descendants of provided compound class concept.
 	 * 
@@ -440,27 +476,37 @@ public class AssignCompounds {
 	 */
 	private static Set<String> offsprings( String _classId, Map<String,Set<String>> _childMap ){
 		
-    final Set<String> offspringList = new HashSet<>();
-    
-		Set<String> idList = Collections.singleton( _classId );
+		Set<String> idList 			= new HashSet<String>();
+		Set<String> childList  		= new HashSet<String>();
+		Set<String> offspringList	= new HashSet<String>();
+		Set<String> parsedList		= new HashSet<String>();
 		
-		while ( ! idList.isEmpty() ) {
-			final Set<String> newIdList = new HashSet<>(); 	//list of all ids for one hierarchy level
+		idList.add( _classId );
+		//System.out.println("ocid: "+_classId);
+		String flag = "toContinue";
+		
+		while ( flag.equals( "toContinue" ) ) {
+			HashSet<String> newIdList = new HashSet<String>(); 	//list of all ids for one hierarchy level
+			flag = "Stop" ;
 			for ( String id : idList ) {
-			  Set<String> childList = _childMap.get( id );
+				if ( parsedList.contains( id ) ) continue;
+				parsedList.add(id);
+				childList = _childMap.get( id );
 				if ( childList != null ) {
-				  newIdList.addAll( childList );
+					newIdList.addAll( childList );
+					flag = new String("toContinue");
 				}
 			}
 			idList = newIdList;
 			offspringList.addAll( newIdList ); //list of all ids for down of classId
 		}
-		
+		//System.out.println("\t"+idList.size()+" childList: "+offspringList);
 		return offspringList;
 	}
 	
 	// ==== command line usage ================================================
 	// ------------------------------------------------------------------------
+	
 	
 	/**
 	 * Prints command line usage help and exits.
@@ -491,13 +537,14 @@ public class AssignCompounds {
                         "   -sta  --statistics   FILENAME\n" +
                         "                          creates output with all assigned compounds to classes\n" + 
                         "   -ter  --terminal       write also to standard out\n" +
-                        "   -u    --append-module  append module name to output-file\n" +
+                        "   -app  --append-module  append module name to output-file\n" +
                         "   -h    --help           print this help and exit\n" 
                       );
     
 		System.exit( _exitCode );
 	}
   
+	
 	/**
 	 * Parses command line parameters. In case of an error it will be written
 	 * to std-err and {@link #usage(int)} is called which exits with code 1.
@@ -545,7 +592,12 @@ public class AssignCompounds {
 				parameters.setWriteToStandardOut( true );
 				argIdx = argIdx - 1;
 			} else if ( "-max".equals( arg ) || "--maximal".equals( arg ) ) {
+				//maximal number of smiles to be processed in one parrtition
 				parameters.setMax( Integer.parseInt( nextArg ) );
+			} else if ( "-start".equals( arg ) || "--start".equals( arg ) ) {
+				parameters.setStart( Integer.parseInt( nextArg ) );
+			} else if ( "-end".equals( arg ) || "--end".equals( arg ) ) {
+				parameters.setEnd( Integer.parseInt( nextArg ) );
 			} else if ( "-app".equals( arg ) || "--append-module".equals( arg ) ) {
 				parameters.setAppendModuleInfoToFilename( true );
 				argIdx = argIdx - 1;
@@ -560,7 +612,8 @@ public class AssignCompounds {
 		return parameters;
 	}
   
-  	/**
+  	
+	/**
   	 * Command line entry point.
   	 * 
   	 * @param _args
@@ -573,6 +626,7 @@ public class AssignCompounds {
     
 		runAssignment( parameters );
 	}
+
 
 }
 
