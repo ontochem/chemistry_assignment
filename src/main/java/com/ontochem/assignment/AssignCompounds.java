@@ -214,7 +214,7 @@ public class AssignCompounds {
 	    
 	    if ( ocidClass2childMap.size() == 0 ) {
 			LOG.info("generating ocidClass2childMap as has_a relationship was not found in the OBO ...");
-			List<String> idList1 = new ArrayList<>();
+			final List<String> idList1 = new ArrayList<>();
 	   		ocidClass2parentMap.forEach( ( key, value )->{ idList1.addAll( value ); } );
 			for ( String id : idList1 ) {
 				List<String> list1 = new ArrayList<>();
