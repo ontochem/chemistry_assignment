@@ -43,9 +43,9 @@ import com.ontochem.assignment.OntologyLoader.OntologyData;
  *
  * <h3>Changelog</h3>
  * <ul>
- *   <li>2022-10-23
+ *   <li>2024-03-19
  *     <ul>
- *       <li>sixth version</li>
+ *       <li>seventh version</li>
  *       <li>includes stereochemistry assignement via CDK</li>
  *       <li>includes smarts assignement via Ambit</li>
  *     </ul>
@@ -71,10 +71,10 @@ public class AssignCompounds {
 	    private String  smilesFilename;
 	    private String  outFilename;
 	    private String  statisticsFilename;
-	    private int     nThreads = 1;
+	    private int     nThreads = 1;	//number of threads
 	    private int 	max = 0;    	//maximum number of evaluated smiles in a partition, for testing
-	    private int 	startI = 1;    	
-	    private int 	endI = 1;    	
+	    private int 	startI = 1;    	//start compound no, 0 if all from list to be processed
+	    private int 	endI = 1;    	//end compound no to be processed
 	    private boolean appendModuleInfoToFilename = false;
 	    private boolean writeToStandardOut = false;
 	    private boolean writeLeavesOnly = true;
@@ -503,6 +503,7 @@ public class AssignCompounds {
 		//System.out.println("\t"+idList.size()+" childList: "+offspringList);
 		return offspringList;
 	}
+	
 	
 	// ==== command line usage ================================================
 	// ------------------------------------------------------------------------
